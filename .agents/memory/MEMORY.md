@@ -1,1 +1,1 @@
-- [Identity administration](identity-administration.md) — supplied credentials originate in AD FS Application Groups, not Entra App registrations.
+- [Identity administration](identity-administration.md) — AD FS terminology was misleading; use manifest evidence and distinguish credentials from permissions.

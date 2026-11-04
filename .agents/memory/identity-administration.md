@@ -1,9 +1,9 @@
 ---
 name: Identity administration
-description: Confirmed AD FS Application Groups origin of the supplied application credentials.
+description: Distinguish the user's AD FS terminology from evidence of Entra app registration.
 ---
-The user confirmed that the supplied client ID and secret were created in **AD FS Application Groups**, not Microsoft Entra App registrations.
+The user described the connection as managed in AD FS and selected AD FS Application Groups when asked about credential origin. However, the subsequently supplied application manifest was a Microsoft Entra application manifest. Do not treat the earlier answer as proof that no Entra app registration exists.
 
-**Why:** AD FS application credentials and Microsoft Entra app-registration credentials are not interchangeable. Assuming the issuer could lead to repeated unnecessary credential replacements.
+**Why:** The earlier AD FS explanation was premature; a screenshot also revealed that a secret ID had been stored where the secret Value belonged. Authentication failures alone do not identify the credential issuer.
 
-**How to apply:** Do not repeatedly ask the user to recreate AD FS secrets for the Entra token endpoint. For app-only Microsoft Graph access to SharePoint Online, obtain a Microsoft Entra application identity and appropriate Graph permissions, even when employee sign-in is federated through AD FS.
+**How to apply:** Prioritize concrete manifest and runtime evidence over ambiguous identity-provider terminology. Distinguish invalid credentials from delegated-only permissions and missing site grants. Do not ask for a new app registration merely because the organization uses AD FS.
