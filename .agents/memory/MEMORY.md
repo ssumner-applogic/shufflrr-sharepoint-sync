@@ -1,0 +1,1 @@
+- [Identity administration](identity-administration.md) — user reports AD FS management; clarify credential issuer before changing authentication.
