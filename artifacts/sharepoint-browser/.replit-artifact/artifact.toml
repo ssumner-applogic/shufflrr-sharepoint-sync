@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "SharePoint Library Browser"
+description = "A minimal read-only browser and access diagnostic for the ApplogicKnowledgeBase SharePoint document library."
+version = "1.0.0"
+id = "artifacts/sharepoint-browser"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19452
+
+[services.development]
+run = "pnpm --filter @workspace/sharepoint-browser run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/sharepoint-browser", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/sharepoint-browser/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19452"
+BASE_PATH = "/"

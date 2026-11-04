@@ -11,6 +11,50 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /sharepoint/status:
+    get:
+      operationId: getConnectionStatus
+      summary: Credential presence and fixed library target
+      responses:
+        "200":
+          description: Configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionStatus"
+  /sharepoint/test:
+    post:
+      operationId: testConnection
+      summary: Test authentication, site, library and file listing
+      responses:
+        "200":
+          description: Diagnostic result including any access failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessReport"
+  /sharepoint/items:
+    get:
+      operationId: listItems
+      summary: Read a folder in the fixed library
+      parameters:
+        - in: query
+          name: folderId
+          schema: { type: string }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        "200":
+          description: Folder listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FolderListing"
+        "400":
+          description: Invalid input
+        "502":
+          description: Access failed
   /healthz:
     get:
       operationId: healthCheck
@@ -26,6 +70,54 @@ paths:
                 $ref: "#/components/schemas/HealthStatus"
 components:
   schemas:
+    ConnectionStatus:
+      type: object
+      required: [configured, missing, libraryUrl, siteName, libraryName, productionBlocked]
+      properties:
+        configured: { type: boolean }
+        missing: { type: array, items: { type: string } }
+        libraryUrl: { type: string }
+        siteName: { type: string }
+        libraryName: { type: string }
+        productionBlocked: { type: boolean }
+    DiagnosticStep:
+      type: object
+      required: [name, status, message]
+      properties:
+        name: { type: string }
+        status: { type: string, enum: [passed, failed, skipped] }
+        message: { type: string }
+        code: { type: string }
+        requestId: { type: string }
+    AccessReport:
+      type: object
+      required: [ok, checkedAt, steps, advice, permissions]
+      properties:
+        ok: { type: boolean }
+        checkedAt: { type: string }
+        steps:
+          type: array
+          items: { $ref: "#/components/schemas/DiagnosticStep" }
+        advice: { type: array, items: { type: string } }
+        permissions: { type: array, items: { type: string } }
+    LibraryItem:
+      type: object
+      required: [id, name, isFolder, size, modifiedAt, webUrl]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        isFolder: { type: boolean }
+        size: { type: number }
+        modifiedAt: { type: string }
+        webUrl: { type: string }
+    FolderListing:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/LibraryItem" }
+        nextCursor: { type: string }
     HealthStatus:
       type: object
       properties:

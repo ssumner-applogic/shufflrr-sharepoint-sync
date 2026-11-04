@@ -1,6 +1,6 @@
-# [Project name]
+# SharePoint Library Browser
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A minimal read-only browser and access diagnostic for the configured SharePoint document library.
 
 ## Run & Operate
 
@@ -9,7 +9,9 @@ _Replace the heading above with the project's name, and this line with one sente
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required secrets: `MICROSOFT_TENANT_ID`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` (secret Value, not Secret ID).
+- `pnpm --filter @workspace/sharepoint-browser run dev` — frontend (use the managed workflow).
+- No database is used by this application.
 
 ## Stack
 
@@ -26,11 +28,13 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- This is an app-only Microsoft Graph client; do not replace it with delegated user OAuth without discussing the change.
+- The user requested the simplest possible read-only application, with real access testing and actionable information about missing configuration.
+- SharePoint data endpoints are disabled outside development until app-level authentication and authorization are added. This prevents an accidental publish from exposing organizational files.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Test Microsoft credentials, resolve the site and library, list root files and folders, navigate folders, and follow paginated results. Credentials and access tokens remain server-side.
 
 ## User preferences
 
