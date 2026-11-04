@@ -1,1 +1,1 @@
-- [Identity administration](identity-administration.md) — user reports AD FS management; clarify credential issuer before changing authentication.
+- [Identity administration](identity-administration.md) — supplied credentials originate in AD FS Application Groups, not Entra App registrations.
