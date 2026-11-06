@@ -13,3 +13,9 @@ Clerk is not involved in this application. The user clarified that the Clerk con
 **Why:** The user explicitly corrected an inference drawn from the uploaded manifest's callback URL.
 
 **How to apply:** Keep this browser's connection app-only through Microsoft Graph. Do not add Clerk or treat its example callback as a dependency.
+
+For administrator Graph PowerShell sign-in on the user's Windows environment, prefer device-code authentication when the WAM interactive popup fails.
+
+**Why:** The user confirmed device-code sign-in succeeded after interactive sign-in failures.
+
+**How to apply:** Use the administrator's delegated connection only to manage site grants; do not confuse successful administrator sign-in with the browser application's SharePoint authorization.
