@@ -9,13 +9,13 @@ import {
   type DiagnosticStep,
 } from "@workspace/api-client-react";
 import {
-  Check, ExternalLink, FileText, Files, Loader2, LogOut, Minus, RotateCw, ShieldCheck, UserRound, X,
+  Check, ExternalLink, FileText, Files, Loader2, LogOut, Minus, RefreshCw, RotateCw, ShieldCheck, UserRound, X,
 } from "lucide-react";
 import { ShufflrrViewer } from "@/components/shufflrr/ShufflrrViewer";
 import { SharePointTree } from "@/components/sharepoint/SharePointTree";
 import { ShufflrrAccessCheck } from "@/components/shufflrr/ShufflrrAccessCheck";
 
-type Panel = "access" | "viewer" | "shufflrr";
+type Panel = "access" | "viewer" | "shufflrr" | "sync";
 const appName = "Shufflrr-SharePoint Sync Agent";
 
 function AccountActions() {
@@ -184,6 +184,21 @@ export default function Home() {
           <button
             type="button"
             role="tab"
+            id="tab-sync"
+            aria-label="Sync Agent"
+            aria-controls="panel-sync"
+            aria-selected={panel === "sync"}
+            tabIndex={panel === "sync" ? 0 : -1}
+            title="Sync Agent"
+            onClick={() => setPanel("sync")}
+            className={`grid size-10 place-items-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${panel === "sync" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
+            data-testid="tab-sync"
+          >
+            <RefreshCw className="size-5" />
+          </button>
+          <button
+            type="button"
+            role="tab"
             id="tab-access"
             aria-label="Access Test"
             aria-controls="panel-access"
@@ -325,6 +340,16 @@ export default function Home() {
             data-testid="panel-shufflrr"
           >
             <ShufflrrViewer active={panel === "shufflrr"} onAccessTest={() => setPanel("access")} />
+          </section>
+          <section
+            id="panel-sync"
+            role="tabpanel"
+            aria-labelledby="tab-sync"
+            hidden={panel !== "sync"}
+            className="rise"
+            data-testid="panel-sync"
+          >
+            <h2 className="text-lg font-semibold">Sync Agent</h2>
           </section>
         </main>
       </div>
