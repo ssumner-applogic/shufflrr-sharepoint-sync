@@ -12,7 +12,7 @@ export function BranchLoading({ level, testId }: { level: number; testId: string
         className="flex items-center gap-2 py-2 pr-3 text-xs text-muted-foreground"
         style={pad(level)}
       >
-        Loading folder contents…
+        ...
       </span>
     </li>
   );
