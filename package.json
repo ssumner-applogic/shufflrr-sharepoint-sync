@@ -8,6 +8,7 @@
     "build": "pnpm run typecheck && pnpm --filter @workspace/sharepoint-browser run build && pnpm --filter @workspace/api-server run build",
     "start": "SERVE_FRONTEND=true node --enable-source-maps artifacts/api-server/dist/index.mjs",
     "shufflrr:validate": "pnpm --silent --filter @workspace/scripts run shufflrr:validate",
+    "shufflrr:probe": "pnpm --silent --filter @workspace/scripts run shufflrr:probe",
     "test:shufflrr": "pnpm --filter @workspace/scripts run test:shufflrr",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

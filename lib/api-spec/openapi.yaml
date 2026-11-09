@@ -11,6 +11,65 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /shufflrr/items:
+    get:
+      operationId: listShufflrrItems
+      summary: List accessible roots or one Shufflrr folder
+      parameters:
+        - in: query
+          name: folderId
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Folder listing
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShufflrrListing" }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "403": { $ref: "#/components/responses/ShufflrrError" }
+        "502": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
+  /shufflrr/files/{id}/download:
+    get:
+      operationId: downloadShufflrrFile
+      summary: Download an accessible file through the authenticated server
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: File bytes
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "403": { $ref: "#/components/responses/ShufflrrError" }
+        "502": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
+  /shufflrr/test:
+    post:
+      operationId: testShufflrrAccess
+      summary: Verify read/write/delete with isolated temporary items in a selected root
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShufflrrProbeInput" }
+      responses:
+        "200":
+          description: Scoped access report and cleanup status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShufflrrAccessReport" }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "403": { $ref: "#/components/responses/ShufflrrError" }
+        "502": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
   /sharepoint/status:
     get:
       operationId: getConnectionStatus
@@ -69,7 +128,57 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 components:
+  responses:
+    ShufflrrError:
+      description: Safe request or provider failure
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ShufflrrRequestError" }
   schemas:
+    ShufflrrRequestError:
+      type: object
+      required: [error, requestId]
+      properties:
+        error: { type: string }
+        requestId: { type: string }
+    ShufflrrItem:
+      type: object
+      required: [id, name, isFolder, size, modifiedAt, permissions]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        isFolder: { type: boolean }
+        size: { type: number }
+        modifiedAt: { type: string }
+        permissions: { type: string }
+    ShufflrrListing:
+      type: object
+      required: [items, portalUrl]
+      properties:
+        portalUrl: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ShufflrrItem" }
+    ShufflrrProbeInput:
+      type: object
+      required: [rootFolderId, confirmTemporaryChanges]
+      properties:
+        rootFolderId: { type: integer, minimum: 1 }
+        confirmTemporaryChanges: { type: boolean, enum: [true] }
+    ShufflrrAccessReport:
+      type: object
+      required: [ok, checkedAt, scope, cleanupOk, steps, advice]
+      properties:
+        ok: { type: boolean }
+        checkedAt: { type: string }
+        scope: { type: string }
+        cleanupOk: { type: boolean }
+        steps:
+          type: array
+          items: { $ref: "#/components/schemas/DiagnosticStep" }
+        advice:
+          type: array
+          items: { type: string }
     ConnectionStatus:
       type: object
       required: [configured, missing, libraryUrl, siteName, libraryName, productionBlocked]

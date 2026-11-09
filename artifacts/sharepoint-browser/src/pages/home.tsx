@@ -12,6 +12,8 @@ import {
 import {
   ArrowUp, Check, ChevronRight, ExternalLink, FileText, Files, Folder, Loader2, LogOut, Minus, RotateCw, ShieldCheck, UserRound, X,
 } from "lucide-react";
+import { ShufflrrViewer } from "@/components/shufflrr/ShufflrrViewer";
+import { ShufflrrAccessCheck } from "@/components/shufflrr/ShufflrrAccessCheck";
 
 type Crumb = { id?: string; name: string };
 type Panel = "access" | "viewer" | "shufflrr";
@@ -330,6 +332,7 @@ export default function Home() {
                 </>
               )}
             </section>
+            <ShufflrrAccessCheck active={panel === "access"} />
           </section>
 
           <section
@@ -400,12 +403,7 @@ export default function Home() {
             className="rise"
             data-testid="panel-shufflrr"
           >
-            <div className="mb-5">
-              <h2 className="text-lg font-semibold">Shufflrr Viewer</h2>
-            </div>
-            <div className="rounded-lg border bg-card px-5 py-12 text-center text-sm text-muted-foreground">
-              Shufflrr content will appear here.
-            </div>
+            <ShufflrrViewer active={panel === "shufflrr"} onAccessTest={() => setPanel("access")} />
           </section>
         </main>
       </div>

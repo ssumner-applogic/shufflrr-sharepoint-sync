@@ -5,13 +5,29 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-export interface ConnectionStatus {
-  configured: boolean;
-  missing: string[];
-  libraryUrl: string;
-  siteName: string;
-  libraryName: string;
-  productionBlocked: boolean;
+export interface ShufflrrRequestError {
+  error: string;
+  requestId: string;
+}
+
+export interface ShufflrrItem {
+  id: number;
+  name: string;
+  isFolder: boolean;
+  size: number;
+  modifiedAt: string;
+  permissions: string;
+}
+
+export interface ShufflrrListing {
+  portalUrl: string;
+  items: ShufflrrItem[];
+}
+
+export interface ShufflrrProbeInput {
+  /** @minimum 1 */
+  rootFolderId: number;
+  confirmTemporaryChanges: true;
 }
 
 export type DiagnosticStepStatus = typeof DiagnosticStepStatus[keyof typeof DiagnosticStepStatus];
@@ -29,6 +45,24 @@ export interface DiagnosticStep {
   message: string;
   code?: string;
   requestId?: string;
+}
+
+export interface ShufflrrAccessReport {
+  ok: boolean;
+  checkedAt: string;
+  scope: string;
+  cleanupOk: boolean;
+  steps: DiagnosticStep[];
+  advice: string[];
+}
+
+export interface ConnectionStatus {
+  configured: boolean;
+  missing: string[];
+  libraryUrl: string;
+  siteName: string;
+  libraryName: string;
+  productionBlocked: boolean;
 }
 
 export interface AccessReport {
@@ -56,6 +90,18 @@ export interface FolderListing {
 export interface HealthStatus {
   status: string;
 }
+
+/**
+ * Safe request or provider failure
+ */
+export type ShufflrrErrorResponse = ShufflrrRequestError;
+
+export type ListShufflrrItemsParams = {
+/**
+ * @minimum 1
+ */
+folderId?: number;
+};
 
 export type ListItemsParams = {
 folderId?: string;

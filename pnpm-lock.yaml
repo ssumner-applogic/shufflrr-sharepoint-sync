@@ -184,6 +184,9 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
+      '@workspace/shufflrr':
+        specifier: workspace:*
+        version: link:../../lib/shufflrr
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -653,11 +656,21 @@ importers:
         specifier: ^0.31.11
         version: 0.31.11
 
-  scripts:
+  lib/shufflrr:
     dependencies:
       tough-cookie:
         specifier: 6.1.0
         version: 6.1.0
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.9.9
+
+  scripts:
+    dependencies:
+      '@workspace/shufflrr':
+        specifier: workspace:*
+        version: link:../lib/shufflrr
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

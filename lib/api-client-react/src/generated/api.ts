@@ -10,9 +10,14 @@ import {
   useQuery
 } from '@tanstack/react-query';
 import type {
+  DataTag,
+  DefinedInitialDataOptions,
+  DefinedUseQueryResult,
   MutationFunction,
+  QueryClient,
   QueryFunction,
   QueryKey,
+  UndefinedInitialDataOptions,
   UseMutationOptions,
   UseMutationResult,
   UseQueryOptions,
@@ -24,11 +29,16 @@ import type {
   ConnectionStatus,
   FolderListing,
   HealthStatus,
-  ListItemsParams
+  ListItemsParams,
+  ListShufflrrItemsParams,
+  ShufflrrAccessReport,
+  ShufflrrErrorResponse,
+  ShufflrrListing,
+  ShufflrrProbeInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
-import type { ErrorType } from '../custom-fetch';
+import type { ErrorType , BodyType } from '../custom-fetch';
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -53,6 +63,303 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getListShufflrrItemsUrl = (params?: ListShufflrrItemsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/shufflrr/items?${stringifiedParams}` : `/api/shufflrr/items`
+}
+
+/**
+ * @summary List accessible roots or one Shufflrr folder
+ */
+export const listShufflrrItems = async (params?: ListShufflrrItemsParams, options?: Parameters<typeof customFetch>[1]): Promise<ShufflrrListing> => {
+
+  return customFetch<ShufflrrListing>(getListShufflrrItemsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListShufflrrItemsQueryKey = (params?: ListShufflrrItemsParams,) => {
+    return [
+    `/api/shufflrr/items`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListShufflrrItemsQueryOptions = <TData = Awaited<ReturnType<typeof listShufflrrItems>>, TError = ErrorType<ShufflrrErrorResponse>>(params?: ListShufflrrItemsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listShufflrrItems>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListShufflrrItemsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listShufflrrItems>>> = ({ signal }) => listShufflrrItems(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listShufflrrItems>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListShufflrrItemsQueryResult = NonNullable<Awaited<ReturnType<typeof listShufflrrItems>>>
+export type ListShufflrrItemsQueryError = ErrorType<ShufflrrErrorResponse>
+
+
+export function useListShufflrrItems<TData = Awaited<ReturnType<typeof listShufflrrItems>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: undefined |  ListShufflrrItemsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listShufflrrItems>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listShufflrrItems>>,
+          TError,
+          Awaited<ReturnType<typeof listShufflrrItems>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListShufflrrItems<TData = Awaited<ReturnType<typeof listShufflrrItems>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params?: ListShufflrrItemsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listShufflrrItems>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listShufflrrItems>>,
+          TError,
+          Awaited<ReturnType<typeof listShufflrrItems>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListShufflrrItems<TData = Awaited<ReturnType<typeof listShufflrrItems>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params?: ListShufflrrItemsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listShufflrrItems>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List accessible roots or one Shufflrr folder
+ */
+
+export function useListShufflrrItems<TData = Awaited<ReturnType<typeof listShufflrrItems>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params?: ListShufflrrItemsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listShufflrrItems>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListShufflrrItemsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDownloadShufflrrFileUrl = (id: number,) => {
+
+
+
+
+  return `/api/shufflrr/files/${id}/download`
+}
+
+/**
+ * @summary Download an accessible file through the authenticated server
+ */
+export const downloadShufflrrFile = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getDownloadShufflrrFileUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDownloadShufflrrFileQueryKey = (id: number,) => {
+    return [
+    `/api/shufflrr/files/${id}/download`
+    ] as const;
+    }
+
+
+export const getDownloadShufflrrFileQueryOptions = <TData = Awaited<ReturnType<typeof downloadShufflrrFile>>, TError = ErrorType<ShufflrrErrorResponse>>(id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadShufflrrFile>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDownloadShufflrrFileQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadShufflrrFile>>> = ({ signal }) => downloadShufflrrFile(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadShufflrrFile>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type DownloadShufflrrFileQueryResult = NonNullable<Awaited<ReturnType<typeof downloadShufflrrFile>>>
+export type DownloadShufflrrFileQueryError = ErrorType<ShufflrrErrorResponse>
+
+
+export function useDownloadShufflrrFile<TData = Awaited<ReturnType<typeof downloadShufflrrFile>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ id: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadShufflrrFile>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadShufflrrFile>>,
+          TError,
+          Awaited<ReturnType<typeof downloadShufflrrFile>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useDownloadShufflrrFile<TData = Awaited<ReturnType<typeof downloadShufflrrFile>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadShufflrrFile>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadShufflrrFile>>,
+          TError,
+          Awaited<ReturnType<typeof downloadShufflrrFile>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useDownloadShufflrrFile<TData = Awaited<ReturnType<typeof downloadShufflrrFile>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadShufflrrFile>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Download an accessible file through the authenticated server
+ */
+
+export function useDownloadShufflrrFile<TData = Awaited<ReturnType<typeof downloadShufflrrFile>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadShufflrrFile>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getDownloadShufflrrFileQueryOptions(id,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getTestShufflrrAccessUrl = () => {
+
+
+
+
+  return `/api/shufflrr/test`
+}
+
+/**
+ * @summary Verify read/write/delete with isolated temporary items in a selected root
+ */
+export const testShufflrrAccess = async (shufflrrProbeInput: ShufflrrProbeInput, options?: Parameters<typeof customFetch>[1]): Promise<ShufflrrAccessReport> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ShufflrrAccessReport>(getTestShufflrrAccessUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(shufflrrProbeInput)
+  }
+);}
+
+
+
+
+
+export const getTestShufflrrAccessMutationKey = () => ['testShufflrrAccess'] as const;
+
+export const getTestShufflrrAccessMutationOptions = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testShufflrrAccess>>, TError,TestShufflrrAccessMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testShufflrrAccess>>, TError,TestShufflrrAccessMutationVariables, TContext> => {
+
+const mutationKey = getTestShufflrrAccessMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testShufflrrAccess>>, TestShufflrrAccessMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  testShufflrrAccess(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestShufflrrAccessMutationResult = NonNullable<Awaited<ReturnType<typeof testShufflrrAccess>>>
+    export type TestShufflrrAccessMutationBody = BodyType<ShufflrrProbeInput>
+    export type TestShufflrrAccessMutationError = ErrorType<ShufflrrErrorResponse>
+    export type TestShufflrrAccessMutationVariables = {data: BodyType<ShufflrrProbeInput>}
+
+    /**
+ * @summary Verify read/write/delete with isolated temporary items in a selected root
+ */
+export const useTestShufflrrAccess = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testShufflrrAccess>>, TError,TestShufflrrAccessMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof testShufflrrAccess>>,
+        TError,
+        TestShufflrrAccessMutationVariables,
+        TContext
+      > => {
+      return useMutation(getTestShufflrrAccessMutationOptions(options), queryClient);
+    }
 
 export const getGetConnectionStatusUrl = () => {
 
@@ -87,7 +394,7 @@ export const getGetConnectionStatusQueryKey = () => {
     }
 
 
-export const getGetConnectionStatusQueryOptions = <TData = Awaited<ReturnType<typeof getConnectionStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getConnectionStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetConnectionStatusQueryOptions = <TData = Awaited<ReturnType<typeof getConnectionStatus>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getConnectionStatus>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -102,25 +409,49 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getConnectionStatus>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getConnectionStatus>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type GetConnectionStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getConnectionStatus>>>
 export type GetConnectionStatusQueryError = ErrorType<unknown>
 
 
+export function useGetConnectionStatus<TData = Awaited<ReturnType<typeof getConnectionStatus>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getConnectionStatus>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getConnectionStatus>>,
+          TError,
+          Awaited<ReturnType<typeof getConnectionStatus>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetConnectionStatus<TData = Awaited<ReturnType<typeof getConnectionStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getConnectionStatus>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getConnectionStatus>>,
+          TError,
+          Awaited<ReturnType<typeof getConnectionStatus>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetConnectionStatus<TData = Awaited<ReturnType<typeof getConnectionStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getConnectionStatus>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
  * @summary Credential presence and fixed library target
  */
 
 export function useGetConnectionStatus<TData = Awaited<ReturnType<typeof getConnectionStatus>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getConnectionStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getConnectionStatus>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetConnectionStatusQueryOptions(options)
 
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
   return withQueryKey(query, queryOptions.queryKey);
 }
@@ -196,13 +527,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
  */
 export const useTestConnection = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
+ , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof testConnection>>,
         TError,
         void,
         TContext
       > => {
-      return useMutation(getTestConnectionMutationOptions(options));
+      return useMutation(getTestConnectionMutationOptions(options), queryClient);
     }
 
 export const getListItemsUrl = (params?: ListItemsParams,) => {
@@ -245,7 +576,7 @@ export const getListItemsQueryKey = (params?: ListItemsParams,) => {
     }
 
 
-export const getListItemsQueryOptions = <TData = Awaited<ReturnType<typeof listItems>>, TError = ErrorType<void>>(params?: ListItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListItemsQueryOptions = <TData = Awaited<ReturnType<typeof listItems>>, TError = ErrorType<void>>(params?: ListItemsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listItems>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -260,25 +591,49 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listItems>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listItems>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type ListItemsQueryResult = NonNullable<Awaited<ReturnType<typeof listItems>>>
 export type ListItemsQueryError = ErrorType<void>
 
 
+export function useListItems<TData = Awaited<ReturnType<typeof listItems>>, TError = ErrorType<void>>(
+ params: undefined |  ListItemsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listItems>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listItems>>,
+          TError,
+          Awaited<ReturnType<typeof listItems>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListItems<TData = Awaited<ReturnType<typeof listItems>>, TError = ErrorType<void>>(
+ params?: ListItemsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listItems>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listItems>>,
+          TError,
+          Awaited<ReturnType<typeof listItems>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListItems<TData = Awaited<ReturnType<typeof listItems>>, TError = ErrorType<void>>(
+ params?: ListItemsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listItems>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
  * @summary Read a folder in the fixed library
  */
 
 export function useListItems<TData = Awaited<ReturnType<typeof listItems>>, TError = ErrorType<void>>(
- params?: ListItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+ params?: ListItemsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listItems>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListItemsQueryOptions(params,options)
 
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
   return withQueryKey(query, queryOptions.queryKey);
 }
@@ -323,7 +678,7 @@ export const getHealthCheckQueryKey = () => {
     }
 
 
-export const getHealthCheckQueryOptions = <TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getHealthCheckQueryOptions = <TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -338,25 +693,49 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type HealthCheckQueryResult = NonNullable<Awaited<ReturnType<typeof healthCheck>>>
 export type HealthCheckQueryError = ErrorType<unknown>
 
 
+export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof healthCheck>>,
+          TError,
+          Awaited<ReturnType<typeof healthCheck>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof healthCheck>>,
+          TError,
+          Awaited<ReturnType<typeof healthCheck>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
  * @summary Health check
  */
 
 export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getHealthCheckQueryOptions(options)
 
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
   return withQueryKey(query, queryOptions.queryKey);
 }

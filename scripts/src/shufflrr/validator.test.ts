@@ -161,6 +161,25 @@ test("applies a real timeout signal to requests", async () => {
   await client.close();
 });
 
+test("operator permission grant targets only the authenticated service principal", async () => {
+  const client = new ShufflrrClient({
+    baseUrl, timeoutMs: 1000, transport: transport((url, init) => {
+      if (url.pathname.endsWith("/login")) return json({
+        success: true, user: { id: "00000000-0000-0000-0000-000000000001", portalId: 1 },
+      }, 200, "session=test; Path=/api; Secure");
+      assert.equal(url.pathname, "/api/folders/1/permissions");
+      assert.equal(init.method, "POST");
+      assert.deepEqual(JSON.parse(String(init.body)), {
+        principalIds: ["00000000-0000-0000-0000-000000000001"], permission: "FullControl",
+      });
+      return json({ ...folder(1), userPermissions: "Read, Write, FullControl" });
+    }),
+  });
+  await client.login("service@example.invalid", "test-only-password");
+  assert.match(String((await client.grantOwnFolderControl(1)).userPermissions), /FullControl/);
+  await client.close();
+});
+
 test("maps nested and empty folders with stable folders-first tree output", async () => {
   const result = await scanFolders({
     roots: async () => [folder(1, "Library")],

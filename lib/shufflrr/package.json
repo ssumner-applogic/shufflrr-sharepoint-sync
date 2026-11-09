@@ -1,0 +1,9 @@
+{
+  "name": "@workspace/shufflrr",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./probe": "./src/probe.ts" },
+  "dependencies": { "tough-cookie": "6.1.0" },
+  "devDependencies": { "@types/node": "catalog:" }
+}

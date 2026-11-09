@@ -9,6 +9,69 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary List accessible roots or one Shufflrr folder
+ */
+
+
+
+export const ListShufflrrItemsQueryParams = zod.object({
+  "folderId": zod.coerce.number().int().min(1).optional()
+})
+
+export const ListShufflrrItemsResponse = zod.object({
+  "portalUrl": zod.string(),
+  "items": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "isFolder": zod.boolean(),
+  "size": zod.number(),
+  "modifiedAt": zod.string(),
+  "permissions": zod.string()
+}))
+})
+
+
+/**
+ * @summary Download an accessible file through the authenticated server
+ */
+
+
+
+export const DownloadShufflrrFileParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const DownloadShufflrrFileResponse = zod.unknown()
+
+
+/**
+ * @summary Verify read/write/delete with isolated temporary items in a selected root
+ */
+
+
+
+export const TestShufflrrAccessBody = zod.object({
+  "rootFolderId": zod.number().int().min(1),
+  "confirmTemporaryChanges": zod.literal(true)
+})
+
+export const TestShufflrrAccessResponse = zod.object({
+  "ok": zod.boolean(),
+  "checkedAt": zod.string(),
+  "scope": zod.string(),
+  "cleanupOk": zod.boolean(),
+  "steps": zod.array(zod.object({
+  "name": zod.string(),
+  "status": zod.enum(['passed', 'failed', 'skipped']),
+  "message": zod.string(),
+  "code": zod.string().optional(),
+  "requestId": zod.string().optional()
+})),
+  "advice": zod.array(zod.string())
+})
+
+
+/**
  * @summary Credential presence and fixed library target
  */
 export const GetConnectionStatusResponse = zod.object({

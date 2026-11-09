@@ -6,6 +6,7 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "shufflrr:validate": "tsx ./src/shufflrr/validate.ts",
+    "shufflrr:probe": "tsx ./src/shufflrr/probe.ts",
     "test:shufflrr": "tsx --test ./src/shufflrr/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -14,6 +15,6 @@
     "tsx": "catalog:"
   },
   "dependencies": {
-    "tough-cookie": "6.1.0"
+    "@workspace/shufflrr": "workspace:*"
   }
 }

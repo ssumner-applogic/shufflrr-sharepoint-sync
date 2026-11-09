@@ -1,3 +1,11 @@
+# Shufflrr viewer configuration
+
+Set `SHUFFLRR_API_BASE_URL` (your portal's HTTPS URL ending in `/api`), `SHUFFLRR_API_EMAIL`, and `SHUFFLRR_API_PASSWORD` in the Railway service's production variables, or in Cloud Run environment/Secret Manager configuration. Keep email/password server-only. These Replit development values are not automatically copied to Railway. Missing Shufflrr configuration produces a safe configuration error for its viewer; health checks and other app features remain independent.
+
+The existing build/start commands bundle the shared server-only Shufflrr client. No database migration is required. Redeploy the updated repository to make the live viewer available in production. Retain Clerk production keys and domain/origin configuration.
+
+All Shufflrr app endpoints require a Clerk session and same-origin requests. App accounts managed in that Clerk instance share the configured service-account portal's access, following the existing account policy; there is no new public access or tenant selector. The access-test operation only creates, renames, and deletes isolated test items after explicit confirmation. A Shufflrr administrator controls service-account group rights and folder ACLs. Read access is not proof of write/delete rights, and successful tests in one folder do not prove access throughout the portal.
+
 # Deployment
 
 The production container serves the compiled SharePoint viewer and `/api` routes from one stateless Node.js process. It binds to `0.0.0.0` using the host-provided `PORT`; it does not depend on Replit-only services or local persistence.

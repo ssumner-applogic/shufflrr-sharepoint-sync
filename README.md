@@ -1,6 +1,6 @@
 # Shufflrr-SharePoint Sync Agent
 
-A sign-in-protected SharePoint document browser and access diagnostic. The server uses Microsoft app-only credentials; the browser never receives those credentials or Graph access tokens. Clerk handles user sign-in.
+A sign-in-protected SharePoint and Shufflrr document browser with access diagnostics. Microsoft app-only credentials, the Shufflrr service-account credentials, and provider session cookies remain on the server. Clerk handles app sign-in.
 
 ## Local setup
 
@@ -26,7 +26,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for Railway and Google Cloud Run setup, healt
 
 ## Shufflrr API validator (standalone CLI)
 
-This operator-only, read-only tool signs in with a dedicated **Shufflrr service account**, then recursively lists the folders and files visible to that account. It is independent of Clerk and does not yet populate the Shufflrr Viewer tab.
+This operator-only, read-only tool signs in with a dedicated **Shufflrr service account**, then recursively lists the folders and files visible to that account. It is independent of Clerk and shares its validated API client with the Shufflrr Viewer.
 
 Configure `SHUFFLRR_API_BASE_URL` with your portal's HTTPS URL ending in `/api`. Store `SHUFFLRR_API_EMAIL` and `SHUFFLRR_API_PASSWORD` in Replit Secrets (or your local environment/hosting secret manager), never in source code or command-line arguments. These variables are optional for the web app and required only by the CLI. They are not frontend `VITE_*` variables. The command uses existing environment variables; it does not automatically load `.env` files.
 
@@ -62,3 +62,21 @@ Shufflrr/
 No web workflow, database migration, or deployment change is required. Run this as an explicit operator command, not as web-server startup or a cron job. On Railway, install workspace development dependencies in a separate operator environment if needed (`tsx` runs the TypeScript CLI); the production web image is unchanged.
 
 API references: [Shufflrr's official guide](https://shufflrr.com/api-docs/) and [official Swagger schema](https://wwwapi.shufflrr.com/api/docs/v1).
+
+## Live Shufflrr Viewer and scoped access tests
+
+Set the same three `SHUFFLRR_API_*` variables on the API server to enable the signed-in Shufflrr Viewer. It fetches roots automatically when opened, then only the selected folder; it supports breadcrumbs, Up navigation, file downloads, and error/retry states. Shufflrr downloads are authenticated server-side, streamed without disk persistence, limited to 100 MiB and a 60-second upstream request timeout. API redirects are deliberately rejected rather than forwarding credentials to another host.
+
+Every `/api/shufflrr/*` operation requires a Clerk session and same-origin request. Under the existing product policy, accounts managed in the configured Clerk instance can access the single configured service-account portal. The browser cannot choose another portal, supply credentials, or change the acting service principal. Shufflrr itself enforces the service account's per-folder/file authorization. A single service session is kept in memory for up to five minutes, with one reauthentication retry for reads; no folder data is cached server-side.
+
+The Access Test panel now contains a separate Shufflrr section. Choose a root and explicitly confirm temporary changes before running. It verifies root read, folder create/read/rename, file upload/download/rename, file deletion, and folder deletion. It only alters uniquely named temporary test items; cleanup is attempted on failure and never recursively deletes unexpected content. Results apply to the chosen folder and newly created items, not every descendant or the whole portal. Shufflrr's normal delete may retain items in its recycle/trash system; this is not a purge test.
+
+For an **explicit operator-only test across all accessible roots**:
+
+```sh
+pnpm --silent shufflrr:probe --confirm-temporary-changes
+```
+
+This creates and cleans up temporary folders/files, so do not run it as startup, a background schedule, or an ordinary read-only scan. Reports go to stdout and can contain folder names; keep them private. A nonzero exit indicates some operation was denied/unverified or cleanup requires attention.
+
+If shared folders remain read-only, a Shufflrr administrator must grant the service account (or its dedicated API group) **Full Control on the intended folders and child folders**, preserving existing users' permissions. The group must also have the necessary upload/download rights. Do not assume a parent grant changes every existing child's explicit permissions. The application does not bypass permissions, expose ACL administration endpoints, or automatically grant itself privileges.
