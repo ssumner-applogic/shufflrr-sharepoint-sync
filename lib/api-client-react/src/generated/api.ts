@@ -273,6 +273,80 @@ export function useDownloadShufflrrFile<TData = Awaited<ReturnType<typeof downlo
 
 
 
+export const getEndShufflrrSessionUrl = () => {
+
+
+
+
+  return `/api/shufflrr/session/end`
+}
+
+/**
+ * @summary Discard the Shufflrr connection for the current authenticated app session
+ */
+export const endShufflrrSession = async ( options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getEndShufflrrSessionUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getEndShufflrrSessionMutationKey = () => ['endShufflrrSession'] as const;
+
+export const getEndShufflrrSessionMutationOptions = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof endShufflrrSession>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof endShufflrrSession>>, TError,void, TContext> => {
+
+const mutationKey = getEndShufflrrSessionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof endShufflrrSession>>, void> = () => {
+
+
+          return  endShufflrrSession(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EndShufflrrSessionMutationResult = NonNullable<Awaited<ReturnType<typeof endShufflrrSession>>>
+
+    export type EndShufflrrSessionMutationError = ErrorType<ShufflrrErrorResponse>
+
+
+    /**
+ * @summary Discard the Shufflrr connection for the current authenticated app session
+ */
+export const useEndShufflrrSession = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof endShufflrrSession>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof endShufflrrSession>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getEndShufflrrSessionMutationOptions(options), queryClient);
+    }
+
 export const getTestShufflrrAccessUrl = () => {
 
 

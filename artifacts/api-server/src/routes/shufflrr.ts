@@ -8,14 +8,16 @@ import {
   DownloadShufflrrFileParams, TestShufflrrAccessBody, TestShufflrrAccessResponse,
 } from "@workspace/api-zod";
 import { ShufflrrError, validateBaseUrl } from "@workspace/shufflrr";
+import { AppConnectionError } from "@workspace/shufflrr/sessions";
 import { probeAccess } from "@workspace/shufflrr/probe";
-import { newShufflrrClient, readShufflrr, shufflrrConfig, shufflrrItem } from "../lib/shufflrr";
+import { endShufflrrSession, newShufflrrClient, readShufflrr, shufflrrConfig, shufflrrItem } from "../lib/shufflrr";
 
 const router: IRouter = Router();
 function fail(req: Request, res: Response, error: unknown): void {
-  const known = error instanceof ShufflrrError;
+  const known = error instanceof ShufflrrError || error instanceof AppConnectionError;
   req.log.warn({ event: "shufflrr_failure", code: known ? error.code : "unexpected" }, "Shufflrr request failed.");
-  const status = known && error.code === "configuration" ? 503
+  const status = error instanceof AppConnectionError ? (error.code === "ended" ? 401 : 503)
+    : known && error.code === "configuration" ? 503
     : known && error.code === "permission" ? 403 : 502;
   res.status(status).json({
     error: known ? error.message : "Shufflrr is temporarily unavailable.",
@@ -36,10 +38,22 @@ router.use("/shufflrr", (req, res, next) => {
       reject(403, "Cross-origin access is not allowed."); return;
     }
   } catch { reject(403, "Invalid request origin."); return; }
-  const { isAuthenticated, userId } = getAuth(req);
-  if (!isAuthenticated || !userId) { reject(401, "Sign in to access Shufflrr."); return; }
+  const { isAuthenticated, userId, sessionId } = getAuth(req);
+  if (!isAuthenticated || !userId || !sessionId) { reject(401, "Sign in to access Shufflrr."); return; }
   // Existing product policy: Clerk-managed app accounts access the single configured service-account portal.
   next();
+});
+function appSession(req: Request) {
+  const { userId, sessionId } = getAuth(req);
+  if (!userId || !sessionId) throw new AppConnectionError("ended");
+  return { userId, sessionId };
+}
+router.post("/shufflrr/session/end", async (req, res): Promise<void> => {
+  try {
+    await endShufflrrSession(appSession(req).sessionId);
+    req.log.info({ event: "shufflrr_session_released" }, "App session's Shufflrr connection discarded.");
+    res.sendStatus(204);
+  } catch (error) { fail(req, res, error); }
 });
 router.get("/shufflrr/items", async (req, res): Promise<void> => {
   const query = ListShufflrrItemsQueryParams.safeParse(req.query);
@@ -47,7 +61,7 @@ router.get("/shufflrr/items", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Invalid folder parameters.", requestId: String(req.id) }); return;
   }
   try {
-    const items = await readShufflrr(client => query.data.folderId === undefined
+    const items = await readShufflrr(appSession(req), client => query.data.folderId === undefined
       ? client.roots() : client.contents(query.data.folderId));
     const portalUrl = new URL(validateBaseUrl(shufflrrConfig().baseUrl)).origin;
     res.json(ListShufflrrItemsResponse.parse({
@@ -63,7 +77,7 @@ router.get("/shufflrr/files/:id/download", async (req, res): Promise<void> => {
   }
   let upstream: globalThis.Response | undefined;
   try {
-    const { entry, response } = await readShufflrr(async client => {
+    const { entry, response } = await readShufflrr(appSession(req), async client => {
       const entry = await client.file(params.data.id);
       if (entry.isFolder) throw new ShufflrrError("schema", "Choose a file to download.");
       return { entry, response: await client.download(params.data.id) };

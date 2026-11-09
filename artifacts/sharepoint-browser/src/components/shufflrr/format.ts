@@ -1,4 +1,4 @@
-import { getDownloadShufflrrFileUrl, type ShufflrrItem } from "@workspace/api-client-react";
+import { getDownloadShufflrrFileUrl } from "@workspace/api-client-react";
 
 export const SHUFFLRR_STALE_MS = 60_000;
 
@@ -14,12 +14,6 @@ export function fmtSize(n: number) {
 export function fmtDate(s: string) {
   const d = new Date(s);
   return isNaN(d.getTime()) ? "-" : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
-
-export function sortItems(items: ShufflrrItem[]) {
-  return [...items].sort((a, b) =>
-    a.isFolder === b.isFolder ? a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) : a.isFolder ? -1 : 1,
-  );
 }
 
 export function downloadHref(id: number) {

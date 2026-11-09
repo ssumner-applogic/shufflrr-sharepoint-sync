@@ -3,25 +3,38 @@ import { useClerk, useUser } from "@clerk/react";
 import {
   useGetConnectionStatus,
   useTestConnection,
-  useListItems,
+  endShufflrrSession,
   getGetConnectionStatusQueryKey,
-  getListItemsQueryKey,
   type AccessReport,
   type DiagnosticStep,
 } from "@workspace/api-client-react";
 import {
-  ArrowUp, Check, ChevronRight, ExternalLink, FileText, Files, Folder, Loader2, LogOut, Minus, RotateCw, ShieldCheck, UserRound, X,
+  Check, ExternalLink, FileText, Files, Loader2, LogOut, Minus, RotateCw, ShieldCheck, UserRound, X,
 } from "lucide-react";
 import { ShufflrrViewer } from "@/components/shufflrr/ShufflrrViewer";
+import { SharePointTree } from "@/components/sharepoint/SharePointTree";
 import { ShufflrrAccessCheck } from "@/components/shufflrr/ShufflrrAccessCheck";
 
-type Crumb = { id?: string; name: string };
 type Panel = "access" | "viewer" | "shufflrr";
 const appName = "Shufflrr-SharePoint Sync Agent";
 
 function AccountActions() {
   const { user, isLoaded } = useUser();
   const { signOut } = useClerk();
+  const [signingOut, setSigningOut] = useState(false);
+  const logout = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await endShufflrrSession({ signal: AbortSignal.timeout(5000) });
+    } catch {
+      // Cleanup must never prevent Clerk from revoking the app session.
+      console.warn("Shufflrr connection cleanup could not be confirmed. Continuing app sign-out.");
+    } finally {
+      try { await signOut({ redirectUrl: "/" }); }
+      finally { setSigningOut(false); }
+    }
+  };
   if (!isLoaded || !user) return null;
 
   const email = user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? "Signed in";
@@ -48,12 +61,14 @@ function AccountActions() {
       </span>
       <button
         type="button"
-        onClick={() => void signOut({ redirectUrl: "/" })}
+        onClick={() => void logout()}
+        disabled={signingOut}
+        aria-busy={signingOut}
         aria-label="Log out"
         title="Log out"
         className="grid size-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <LogOut className="size-4" aria-hidden="true" />
+        {signingOut ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <LogOut className="size-4" aria-hidden="true" />}
       </button>
     </div>
   );
@@ -76,18 +91,6 @@ function handleTabKeys(event: KeyboardEvent<HTMLElement>) {
   event.preventDefault();
   tabs[nextIndex]?.focus();
   tabs[nextIndex]?.click();
-}
-
-function fmtSize(n: number) {
-  if (n < 1024) return `${n} B`;
-  const u = ["KB", "MB", "GB", "TB"];
-  let v = n / 1024, i = 0;
-  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
-  return `${v.toFixed(v < 10 ? 1 : 0)} ${u[i]}`;
-}
-function fmtDate(s: string) {
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? "—" : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
 function StepIcon({ status }: { status: DiagnosticStep["status"] }) {
@@ -124,88 +127,6 @@ function Report({ report }: { report: AccessReport }) {
         </div>
       )}
     </div>
-  );
-}
-
-function Browser({ libraryName, onAccessTest }: { libraryName: string; onAccessTest: () => void }) {
-  const [path, setPath] = useState<Crumb[]>([{ name: libraryName }]);
-  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
-  const folderId = path[path.length - 1].id;
-  const cursor = cursors[cursors.length - 1];
-  const params = { ...(folderId ? { folderId } : {}), ...(cursor ? { cursor } : {}) };
-  const q = useListItems(params, { query: { queryKey: getListItemsQueryKey(params) } });
-
-  const go = (p: Crumb[]) => { setPath(p); setCursors([undefined]); };
-  const err = q.error?.data as { error?: string; advice?: string[] } | null | undefined;
-
-  return (
-    <section className="rise rounded-lg border bg-card" data-testid="browser">
-      <div className="flex items-center gap-2 border-b px-4 py-3">
-        <button
-          onClick={() => go(path.slice(0, -1))}
-          disabled={path.length < 2}
-          className="grid size-7 place-items-center rounded border text-muted-foreground hover:bg-secondary disabled:opacity-40"
-          aria-label="Up one folder" data-testid="button-up"
-        ><ArrowUp className="size-4" /></button>
-        <nav className="flex min-w-0 flex-wrap items-center gap-0.5 text-sm" data-testid="breadcrumbs">
-          {path.map((c, i) => (
-            <span key={i} className="flex items-center gap-0.5">
-              {i > 0 && <ChevronRight className="size-3.5 text-muted-foreground" />}
-              {i === path.length - 1 ? <span className="px-1 font-medium">{c.name}</span> : (
-                <button onClick={() => go(path.slice(0, i + 1))} className="rounded px-1 text-primary hover:underline" data-testid={`crumb-${i}`}>{c.name}</button>
-              )}
-            </span>
-          ))}
-        </nav>
-        {q.isFetching && !q.isLoading && <Loader2 className="ml-auto size-4 animate-spin text-muted-foreground" />}
-      </div>
-
-      {q.isLoading ? (
-        <div className="divide-y">{Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3 px-4 py-3"><div className="size-4 rounded bg-muted animate-pulse" /><div className="h-3 rounded bg-muted animate-pulse" style={{ width: `${30 + ((i * 17) % 40)}%` }} /></div>
-        ))}</div>
-      ) : q.isError ? (
-        <div className="px-4 py-8 text-sm" data-testid="error-list" role="alert">
-          <div className="font-medium text-destructive">Could not read this folder</div>
-          <div className="mt-1 text-muted-foreground">{err?.error ?? q.error?.message}</div>
-          {err?.advice && err.advice.length > 0 && <ul className="mt-3 list-disc space-y-1 pl-5">{err.advice.map((a, i) => <li key={i}>{a}</li>)}</ul>}
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button onClick={onAccessTest} className="rounded border px-3 py-1.5 hover:bg-secondary" data-testid="button-go-access-test">Go to Access Test</button>
-            <button onClick={() => q.refetch()} className="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 hover:bg-secondary" data-testid="button-retry-list"><RotateCw className="size-3.5" /> Retry</button>
-          </div>
-        </div>
-      ) : q.data && q.data.items.length === 0 ? (
-        <div className="px-4 py-12 text-center text-sm text-muted-foreground" data-testid="empty-list">This folder is empty.</div>
-      ) : (
-        <ul className="divide-y">
-          {q.data?.items.map((it) => {
-            const inner = (<>
-              {it.isFolder ? <Folder className="size-4 shrink-0 fill-primary/15 text-primary" /> : <FileText className="size-4 shrink-0 text-muted-foreground" />}
-              <span className="min-w-0 flex-1 truncate">{it.name}</span>
-              <span className="hidden w-20 text-right font-mono text-xs text-muted-foreground sm:block">{it.isFolder ? "" : fmtSize(it.size)}</span>
-              <span className="hidden w-40 text-right font-mono text-xs text-muted-foreground md:block">{fmtDate(it.modifiedAt)}</span>
-              {it.isFolder ? <ChevronRight className="size-4 text-muted-foreground" /> : <ExternalLink className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100" />}
-            </>);
-            const cls = "group flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-secondary/60";
-            return (
-              <li key={it.id}>
-                {it.isFolder
-                  ? <button className={cls} onClick={() => go([...path, { id: it.id, name: it.name }])} data-testid={`folder-${it.id}`}>{inner}</button>
-                  : <a className={cls} href={it.webUrl} target="_blank" rel="noopener noreferrer" data-testid={`file-${it.id}`}>{inner}</a>}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {(cursors.length > 1 || q.data?.nextCursor) && !q.isError && (
-        <div className="flex items-center justify-between border-t px-4 py-2.5 text-sm">
-          <button disabled={cursors.length < 2} onClick={() => setCursors(cursors.slice(0, -1))} className="rounded border px-3 py-1 hover:bg-secondary disabled:opacity-40" data-testid="button-prev">Previous</button>
-          <span className="font-mono text-xs text-muted-foreground">page {cursors.length}</span>
-          <button disabled={!q.data?.nextCursor} onClick={() => setCursors([...cursors, q.data?.nextCursor])} className="rounded border px-3 py-1 hover:bg-secondary disabled:opacity-40" data-testid="button-next">Next</button>
-        </div>
-      )}
-    </section>
   );
 }
 
@@ -369,7 +290,7 @@ export default function Home() {
                     <button onClick={() => setPanel("access")} className="rounded border bg-card px-3 py-1.5 hover:bg-secondary" data-testid="button-open-access-test">Go to Access Test</button>
                   </div>
                 )}
-                <Browser libraryName={s.libraryName || "Shared Documents"} onAccessTest={() => setPanel("access")} />
+                <SharePointTree libraryName={s.libraryName || "Shared Documents"} active={panel === "viewer"} onAccessTest={() => setPanel("access")} />
               </>
             ) : (
               <div className="rounded-lg border bg-card px-5 py-10 text-center text-sm" role={viewerHasError ? "alert" : "status"}>

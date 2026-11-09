@@ -45,6 +45,12 @@ export const DownloadShufflrrFileResponse = zod.unknown()
 
 
 /**
+ * @summary Discard the Shufflrr connection for the current authenticated app session
+ */
+export const EndShufflrrSessionResponse = zod.void()
+
+
+/**
  * @summary Verify read/write/delete with isolated temporary items in a selected root
  */
 

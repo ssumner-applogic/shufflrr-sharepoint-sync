@@ -6,6 +6,8 @@ The existing build/start commands bundle the shared server-only Shufflrr client.
 
 All Shufflrr app endpoints require a Clerk session and same-origin requests. App accounts managed in that Clerk instance share the configured service-account portal's access, following the existing account policy; there is no new public access or tenant selector. The access-test operation only creates, renames, and deletes isolated test items after explicit confirmation. A Shufflrr administrator controls service-account group rights and folder ACLs. Read access is not proof of write/delete rights, and successful tests in one folder do not prove access throughout the portal.
 
+The server now retains a separate Shufflrr connection per verified Clerk app session, until logout or that session's actual expiry, rather than expiring it after five minutes. The first connection requires Clerk Backend API session lookup using the existing server-only Clerk key; failures return a safe error rather than bypassing validation. Local session connections are bounded to 256 per instance, never persisted, and discarded on graceful shutdown. Reauthentication after provider expiry, instance changes, or process restart is expected and does not require sticky sessions. Deploy frontend and API changes together so header logout can discard its server connection before Clerk signs out. No new variables or migration are required.
+
 # Deployment
 
 The production container serves the compiled SharePoint viewer and `/api` routes from one stateless Node.js process. It binds to `0.0.0.0` using the host-provided `PORT`; it does not depend on Replit-only services or local persistence.

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts", "./probe": "./src/probe.ts" },
+  "exports": { ".": "./src/index.ts", "./probe": "./src/probe.ts", "./sessions": "./src/sessions.ts" },
   "dependencies": { "tough-cookie": "6.1.0" },
   "devDependencies": { "@types/node": "catalog:" }
 }

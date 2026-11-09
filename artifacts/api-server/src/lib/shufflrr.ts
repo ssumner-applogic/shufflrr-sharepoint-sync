@@ -1,4 +1,6 @@
 import { ShufflrrClient, ShufflrrError, type Entry } from "@workspace/shufflrr";
+import { AppSessionConnections, AppConnectionError } from "@workspace/shufflrr/sessions";
+import { clerkClient } from "@clerk/express";
 import { logger } from "./logger";
 
 export function shufflrrConfig() {
@@ -25,29 +27,47 @@ export function newShufflrrClient(): ShufflrrClient {
   });
 }
 
-// One bounded, disposable service-account session, never a cache of user data.
-let session: { client: ShufflrrClient; expiresAt: number } | undefined;
-let login: Promise<ShufflrrClient> | undefined;
-export async function shufflrrSession(): Promise<ShufflrrClient> {
-  if (session && session.expiresAt > Date.now()) return session.client;
-  if (login) return login;
-  login = (async () => {
+type AppSession = { sessionId: string; userId: string };
+const connections = new AppSessionConnections<ShufflrrClient>();
+const cleanupTimer = setInterval(() => {
+  void connections.sweep().catch(() => {
+    logger.warn({ event: "shufflrr_session_cleanup_failed" }, "Expired connection cleanup failed.");
+  });
+}, 60_000);
+cleanupTimer.unref();
+
+export async function shufflrrSession(auth: AppSession): Promise<ShufflrrClient> {
+  return connections.get(auth.sessionId, async () => {
+    let appSession: Awaited<ReturnType<typeof clerkClient.sessions.getSession>>;
+    try { appSession = await clerkClient.sessions.getSession(auth.sessionId); }
+    catch {
+      throw new ShufflrrError("network", "Could not verify the app session. Please retry.");
+    }
+    if (appSession.status !== "active" || appSession.userId !== auth.userId)
+      throw new AppConnectionError("ended");
+    // These are Clerk session deadlines in milliseconds, NOT the short-lived JWT exp.
+    const expiresAt = Math.min(appSession.expireAt, appSession.abandonAt);
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) throw new AppConnectionError("ended");
     const client = newShufflrrClient();
     const config = shufflrrConfig();
-    await client.login(config.email, config.password);
-    session = { client, expiresAt: Date.now() + 5 * 60_000 };
-    return client;
-  })();
-  try { return await login; } finally { login = undefined; }
+    try { await client.login(config.email, config.password); }
+    catch (error) { await client.close(); throw error; }
+    return { client, expiresAt };
+  });
 }
-export async function readShufflrr<T>(operation: (client: ShufflrrClient) => Promise<T>): Promise<T> {
-  const client = await shufflrrSession();
+export const endShufflrrSession = (sessionId: string) => connections.end(sessionId);
+export async function closeShufflrrSessions(): Promise<void> {
+  clearInterval(cleanupTimer);
+  await connections.clear();
+}
+export async function readShufflrr<T>(auth: AppSession, operation: (client: ShufflrrClient) => Promise<T>): Promise<T> {
+  const client = await shufflrrSession(auth);
   try { return await operation(client); }
   catch (error) {
     if (!(error instanceof ShufflrrError) || error.code !== "authentication") throw error;
-    if (session?.client === client) session = undefined;
+    await connections.end(auth.sessionId, client);
     // A single fresh session retry is safe for read-only operations.
-    return operation(await shufflrrSession());
+    return operation(await shufflrrSession(auth));
   }
 }
 export function shufflrrItem(entry: Entry) {

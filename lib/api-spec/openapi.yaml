@@ -50,6 +50,20 @@ paths:
         "403": { $ref: "#/components/responses/ShufflrrError" }
         "502": { $ref: "#/components/responses/ShufflrrError" }
         "503": { $ref: "#/components/responses/ShufflrrError" }
+  /shufflrr/session/end:
+    post:
+      operationId: endShufflrrSession
+      tags: [Shufflrr]
+      summary: Discard the Shufflrr connection for the current authenticated app session
+      responses:
+        "204":
+          description: Connection discarded or no connection existed
+        "401":
+          $ref: "#/components/responses/ShufflrrError"
+        "403":
+          $ref: "#/components/responses/ShufflrrError"
+        "502":
+          $ref: "#/components/responses/ShufflrrError"
   /shufflrr/test:
     post:
       operationId: testShufflrrAccess

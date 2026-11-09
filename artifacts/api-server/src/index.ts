@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { closeShufflrrSessions } from "./lib/shufflrr";
 
 const rawPort = process.env["PORT"];
 
@@ -28,7 +29,9 @@ const shutdown = (signal: NodeJS.Signals) => {
   }, 10_000);
   timeout.unref();
 
-  server.close(error => {
+  server.close(async error => {
+    try { await closeShufflrrSessions(); }
+    catch { logger.warn({ event: "shufflrr_session_cleanup_failed" }, "Connection cleanup failed during shutdown."); }
     clearTimeout(timeout);
     if (error) {
       logger.error({ err: error, signal }, "Error during shutdown");
