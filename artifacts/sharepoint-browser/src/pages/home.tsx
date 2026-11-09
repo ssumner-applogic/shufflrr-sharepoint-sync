@@ -66,7 +66,7 @@ function Report({ report }: { report: AccessReport }) {
             <StepIcon status={s.status} />
             <div className="min-w-0 flex-1 text-sm">
               <div className="font-medium">{s.name} <span className="ml-1 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">{s.status}</span></div>
-              {s.status === "failed" && <div className="break-words text-muted-foreground">{s.message}</div>}
+              {(s.status === "failed" || s.name === "Verify write access") && <div className="break-words text-muted-foreground">{s.message}</div>}
               {(s.code || s.requestId) && (
                 <div className="mt-1 font-mono text-[11px] text-muted-foreground break-all">
                   {s.code && <>code {s.code}</>}{s.code && s.requestId && " · "}{s.requestId && <>request-id {s.requestId}</>}
@@ -174,13 +174,14 @@ export default function Home() {
   const [session, setSession] = useState(0);
   const [panel, setPanel] = useState<Panel>("viewer");
   const report = test.data;
-  const ok = !test.isPending && report?.ok === true;
+  const readOk = !test.isPending && !!report && report.steps.slice(0, 4).every((step) => step.status === "passed");
+  const writeFailed = readOk && report.steps.some((step) => step.name === "Verify write access" && step.status === "failed");
 
   const run = () => {
     test.mutate(undefined, {
       onSuccess: (r) => {
         qc.removeQueries({ queryKey: ["/api/sharepoint/items"] });
-        if (r.ok) setSession((n) => n + 1);
+        if (r.steps.slice(0, 4).every((step) => step.status === "passed")) setSession((n) => n + 1);
       },
     });
   };
@@ -193,7 +194,7 @@ export default function Home() {
     }
   }, [panel, status.isSuccess, s?.configured]);
 
-  const viewerHasError = status.isError || (status.isSuccess && !s?.configured) || test.isError || report?.ok === false;
+  const viewerHasError = status.isError || (status.isSuccess && !s?.configured) || test.isError || (!!report && report.steps.slice(0, 4).some((step) => step.status === "failed"));
   const viewerIsConnecting = status.isLoading || (status.isSuccess && s?.configured && (test.isPending || (!report && !test.isError)));
 
   return (
@@ -314,8 +315,16 @@ export default function Home() {
                 </a>
               )}
             </div>
-            {ok && s ? (
-              <Browser key={session} libraryName={s.libraryName || "Shared Documents"} onAccessTest={() => setPanel("access")} />
+            {readOk && s ? (
+              <>
+                {writeFailed && (
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm" role="alert">
+                    <span className="text-destructive">Write access check failed.</span>
+                    <button onClick={() => setPanel("access")} className="rounded border bg-card px-3 py-1.5 hover:bg-secondary" data-testid="button-open-access-test">Go to Access Test</button>
+                  </div>
+                )}
+                <Browser key={session} libraryName={s.libraryName || "Shared Documents"} onAccessTest={() => setPanel("access")} />
+              </>
             ) : (
               <div className="rounded-lg border bg-card px-5 py-10 text-center text-sm" role={viewerHasError ? "alert" : "status"}>
                 <p className={viewerHasError ? "text-destructive" : "text-muted-foreground"}>

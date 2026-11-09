@@ -1,6 +1,6 @@
-# SharePoint Library Browser
+# Shufflrr-SharePoint Sync Agent
 
-A minimal read-only browser and access diagnostic for the configured SharePoint document library.
+A SharePoint document browser and access diagnostic. The write-access check creates and removes a uniquely named temporary file in the configured library.
 
 ## Run & Operate
 
@@ -29,12 +29,12 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 ## Architecture decisions
 
 - This is an app-only Microsoft Graph client; do not replace it with delegated user OAuth without discussing the change.
-- The user requested the simplest possible read-only application, with real access testing and actionable information about missing configuration.
+- The user requested a minimal document viewer with real access testing and actionable information about missing configuration. The final access check briefly creates and removes a uniquely named temporary file to verify effective write access.
 - SharePoint data endpoints are disabled outside development until app-level authentication and authorization are added. This prevents an accidental publish from exposing organizational files.
 
 ## Product
 
-Test Microsoft credentials, resolve the site and library, list root files and folders, navigate folders, and follow paginated results. Credentials and access tokens remain server-side.
+Test Microsoft credentials, resolve the site and library, list root files and folders, verify read and write access, navigate folders, and follow paginated results. The write check removes its temporary file. Credentials and access tokens remain server-side.
 
 ## User preferences
 

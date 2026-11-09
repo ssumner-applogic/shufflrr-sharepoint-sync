@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { AccessReport, FolderListing } from "@workspace/api-zod";
 
 export const libraryUrl = "https://sandvine.sharepoint.com/sites/ApplogicKnowledgeBase/Shared%20Documents";
@@ -27,6 +27,11 @@ export function advice(error: AccessError): string[] {
   if (error.code === "InvalidTenant") return ["Confirm MICROSOFT_TENANT_ID is the Directory (tenant) ID of the organization hosting this SharePoint site."];
   if (error.code === "InvalidClient") return ["Confirm MICROSOFT_CLIENT_ID is the Application (client) ID in that tenant, not the Object ID."];
   if (error.code === "MissingCredentials") return ["Add the missing Microsoft credentials in Replit Secrets, then restart the API server."];
+  if (error.code === "WriteAccessDenied") return [
+    "Read access is available, but the application cannot write to this library.",
+    "Ask a Microsoft 365 administrator to grant this app write access to the SharePoint site. For Sites.Selected, the site grant must include write access.",
+  ];
+  if (error.code === "WriteProbeCleanupFailed") return ["The temporary write-test file may still be in Shared Documents. Check the file name in the error and remove it before retrying."];
   if (error.status === 403 || error.code === "accessDenied") return [
     "Ask a Microsoft 365 administrator to check Microsoft Graph APPLICATION permissions and admin consent for this app.",
     "Recommended: Sites.Selected plus an explicit read grant to /sites/ApplogicKnowledgeBase. Admin consent alone does not grant site access.",
@@ -70,21 +75,29 @@ async function token() {
   return tokenCache;
 }
 
-async function graph<T = GraphPage>(path: string): Promise<T> {
+async function graph<T = GraphPage>(path: string, init: RequestInit = {}): Promise<T> {
   const auth = await token();
   const url = path.startsWith("https:") ? new URL(path) : new URL(graphRoot + path);
   if (url.origin !== "https://graph.microsoft.com" || !url.pathname.startsWith("/v1.0/")) {
     throw new AccessError("InvalidCursor", "Invalid Microsoft Graph continuation URL.", 400);
   }
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${auth.value}` }, signal: AbortSignal.timeout(20000), redirect: "error" });
-  const data = await res.json() as T & { error?: { code?: string } };
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${auth.value}`);
+  const res = await fetch(url, {
+    ...init,
+    headers,
+    signal: init.signal ?? AbortSignal.timeout(20000),
+    redirect: "error",
+  });
+  const data = res.status === 204 ? undefined : await res.json() as T & { error?: { code?: string } };
   if (!res.ok) {
     if (res.status === 401) tokenCache = undefined;
-    throw new AccessError(String(data.error?.code || "GraphError"),
-      `Microsoft Graph returned HTTP ${res.status}: ${String(data.error?.code || "request failed")}.`,
+    const code = data?.error?.code || "GraphError";
+    throw new AccessError(String(code),
+      `Microsoft Graph returned HTTP ${res.status}: ${String(code || "request failed")}.`,
       res.status, res.headers.get("request-id") || undefined);
   }
-  return data;
+  return data as T;
 }
 
 let locationCache: { siteId: string; driveId: string; expires: number } | undefined;
@@ -148,13 +161,108 @@ export async function listFolder(folderId?: string, cursor?: string): Promise<Fo
   };
 }
 
+async function findWriteProbe(driveId: string, fileName: string): Promise<string | undefined> {
+  try {
+    const item = await graph<{ id?: string }>(
+      `/drives/${encodeURIComponent(driveId)}/root:/${encodeURIComponent(fileName)}?$select=id`,
+    );
+    return item.id;
+  } catch (error) {
+    if (error instanceof AccessError && error.status === 404) return undefined;
+    throw error;
+  }
+}
+
+async function deleteWriteProbe(driveId: string, itemId: string, fileName: string): Promise<void> {
+  const path = `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}`;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await graph<void>(path, { method: "DELETE" });
+      return;
+    } catch (error) {
+      if (error instanceof AccessError && error.status === 404) return;
+      lastError = error;
+    }
+  }
+  const cleanup = normalizeError(lastError);
+  throw new AccessError(
+    "WriteProbeCleanupFailed",
+    `Write access succeeded, but the temporary file "${fileName}" could not be removed. Remove it from Shared Documents.`,
+    cleanup.status,
+    cleanup.requestId,
+  );
+}
+
+async function verifyWriteAccess(): Promise<string> {
+  const { driveId } = await location();
+  const fileName = `Shufflrr-SharePoint-Write-Test-${randomUUID()}.txt`;
+  const drivePath = `/drives/${encodeURIComponent(driveId)}`;
+  let itemId: string | undefined;
+
+  try {
+    const item = await graph<{ id?: string }>(
+      `${drivePath}/root:/${encodeURIComponent(fileName)}:/content`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+        body: "Temporary SharePoint write-access probe. Safe to delete.",
+      },
+    );
+    itemId = item.id;
+  } catch (error) {
+    if (error instanceof AccessError) {
+      if (error.status === 403 || error.code === "accessDenied") {
+        throw new AccessError("WriteAccessDenied", error.message, error.status, error.requestId);
+      }
+      throw error;
+    }
+
+    try {
+      itemId = await findWriteProbe(driveId, fileName);
+    } catch (lookupError) {
+      const lookup = normalizeError(lookupError);
+      throw new AccessError(
+        "WriteProbeCleanupFailed",
+        `The upload result is unclear. Check Shared Documents for "${fileName}" and remove it if present.`,
+        lookup.status,
+        lookup.requestId,
+      );
+    }
+    if (itemId) await deleteWriteProbe(driveId, itemId, fileName);
+    throw error;
+  }
+
+  if (!itemId) {
+    try {
+      itemId = await findWriteProbe(driveId, fileName);
+    } catch (error) {
+      const lookup = normalizeError(error);
+      throw new AccessError(
+        "WriteProbeCleanupFailed",
+        `SharePoint did not return the temporary file ID. Check Shared Documents for "${fileName}" and remove it if present.`,
+        lookup.status,
+        lookup.requestId,
+      );
+    }
+  }
+  if (!itemId) {
+    throw new AccessError(
+      "WriteProbeCleanupFailed",
+      `SharePoint did not return an ID for "${fileName}". Check Shared Documents and remove it if present.`,
+    );
+  }
+  await deleteWriteProbe(driveId, itemId, fileName);
+  return "Temporary probe file created and removed.";
+}
+
 export function normalizeError(error: unknown) {
   return error instanceof AccessError ? error : new AccessError("NetworkError", "Could not complete the Microsoft request. Check network availability and retry.");
 }
 
 export async function testAccess(): Promise<AccessReport> {
   const report: AccessReport = { ok: false, checkedAt: new Date().toISOString(), steps: [], advice: [], permissions: [] };
-  const names = ["Authenticate application", "Resolve SharePoint site", "Resolve document library", "List files and folders"];
+  const names = ["Authenticate application", "Resolve SharePoint site", "Resolve document library", "List files and folders", "Verify write access"];
   const operations = [
     async () => {
       tokenCache = undefined; locationCache = undefined;
@@ -164,6 +272,7 @@ export async function testAccess(): Promise<AccessReport> {
     async () => { const found = await site(); locationCache = { siteId: found.id, driveId: "", expires: 0 }; return "Target SharePoint site is accessible."; },
     async () => { await library(locationCache!.siteId); return "Shared Documents library is accessible."; },
     async () => { const page = await listFolder(); return `Read ${page.items.length} items from the library root${page.nextCursor ? " (additional pages available)" : ""}.`; },
+    async () => verifyWriteAccess(),
   ];
   for (let i = 0; i < names.length; i++) {
     try {
@@ -178,6 +287,6 @@ export async function testAccess(): Promise<AccessReport> {
     }
   }
   report.ok = true;
-  report.advice = ["Access confirmed. No additional Microsoft user credentials are required.", "Keep this development prototype private. Add app-level authentication and authorization before publishing."];
+  report.advice = ["Read and write access confirmed. The temporary write-test file was removed.", "Keep this development prototype private. Add app-level authentication and authorization before publishing."];
   return report;
 }
