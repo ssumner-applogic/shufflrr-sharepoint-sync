@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetConnectionStatus,
@@ -10,10 +10,31 @@ import {
   type DiagnosticStep,
 } from "@workspace/api-client-react";
 import {
-  ArrowUp, Check, ChevronRight, ExternalLink, FileText, Folder, Loader2, Minus, RotateCw, ShieldAlert, X,
+  ArrowUp, Check, ChevronRight, ExternalLink, FileText, Files, Folder, Loader2, Minus, RotateCw, ShieldCheck, X,
 } from "lucide-react";
 
 type Crumb = { id?: string; name: string };
+type Panel = "access" | "viewer";
+const appName = "Shufflrr-SharePoint Sync Agent";
+
+function handleTabKeys(event: KeyboardEvent<HTMLElement>) {
+  const key = event.key;
+  if (key !== "ArrowDown" && key !== "ArrowUp" && key !== "Home" && key !== "End") return;
+
+  const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+  const currentTab = (event.target as HTMLElement).closest<HTMLButtonElement>('[role="tab"]');
+  if (!currentTab) return;
+  const currentIndex = tabs.indexOf(currentTab);
+  if (currentIndex < 0) return;
+
+  const nextIndex = key === "Home" ? 0
+    : key === "End" ? tabs.length - 1
+      : key === "ArrowDown" ? (currentIndex + 1) % tabs.length
+        : (currentIndex - 1 + tabs.length) % tabs.length;
+  event.preventDefault();
+  tabs[nextIndex]?.focus();
+  tabs[nextIndex]?.click();
+}
 
 function fmtSize(n: number) {
   if (n < 1024) return `${n} B`;
@@ -38,7 +59,6 @@ function Report({ report }: { report: AccessReport }) {
     <div className="rise mt-5 space-y-5" data-testid="report">
       <div className={`flex items-center justify-between rounded-md border px-4 py-3 text-sm ${report.ok ? "border-primary/30 bg-accent text-accent-foreground" : "border-destructive/30 bg-destructive/8 text-destructive"}`}>
         <span className="font-medium" data-testid="status-access">{report.ok ? "Access confirmed" : "Access check failed"}</span>
-        <span className="font-mono text-xs opacity-70">{fmtDate(report.checkedAt)}</span>
       </div>
       <ol className="space-y-3">
         {report.steps.map((s, i) => (
@@ -46,7 +66,7 @@ function Report({ report }: { report: AccessReport }) {
             <StepIcon status={s.status} />
             <div className="min-w-0 flex-1 text-sm">
               <div className="font-medium">{s.name} <span className="ml-1 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">{s.status}</span></div>
-              <div className="text-muted-foreground break-words">{s.message}</div>
+              {s.status === "failed" && <div className="break-words text-muted-foreground">{s.message}</div>}
               {(s.code || s.requestId) && (
                 <div className="mt-1 font-mono text-[11px] text-muted-foreground break-all">
                   {s.code && <>code {s.code}</>}{s.code && s.requestId && " · "}{s.requestId && <>request-id {s.requestId}</>}
@@ -56,17 +76,8 @@ function Report({ report }: { report: AccessReport }) {
           </li>
         ))}
       </ol>
-      {report.permissions.length > 0 && (
+      {!report.ok && report.advice.length > 0 && (
         <div>
-          <div className="mb-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">Token permissions</div>
-          <div className="flex flex-wrap gap-1.5">
-            {report.permissions.map((p) => <span key={p} className="rounded border bg-secondary px-2 py-0.5 font-mono text-xs">{p}</span>)}
-          </div>
-        </div>
-      )}
-      {report.advice.length > 0 && (
-        <div>
-          <div className="mb-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">What to check</div>
           <ul className="list-disc space-y-1 pl-5 text-sm">{report.advice.map((a, i) => <li key={i}>{a}</li>)}</ul>
         </div>
       )}
@@ -74,7 +85,7 @@ function Report({ report }: { report: AccessReport }) {
   );
 }
 
-function Browser({ libraryName }: { libraryName: string }) {
+function Browser({ libraryName, onAccessTest }: { libraryName: string; onAccessTest: () => void }) {
   const [path, setPath] = useState<Crumb[]>([{ name: libraryName }]);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const folderId = path[path.length - 1].id;
@@ -112,11 +123,14 @@ function Browser({ libraryName }: { libraryName: string }) {
           <div key={i} className="flex items-center gap-3 px-4 py-3"><div className="size-4 rounded bg-muted animate-pulse" /><div className="h-3 rounded bg-muted animate-pulse" style={{ width: `${30 + ((i * 17) % 40)}%` }} /></div>
         ))}</div>
       ) : q.isError ? (
-        <div className="px-4 py-8 text-sm" data-testid="error-list">
+        <div className="px-4 py-8 text-sm" data-testid="error-list" role="alert">
           <div className="font-medium text-destructive">Could not read this folder</div>
           <div className="mt-1 text-muted-foreground">{err?.error ?? q.error?.message}</div>
           {err?.advice && err.advice.length > 0 && <ul className="mt-3 list-disc space-y-1 pl-5">{err.advice.map((a, i) => <li key={i}>{a}</li>)}</ul>}
-          <button onClick={() => q.refetch()} className="mt-4 inline-flex items-center gap-1.5 rounded border px-3 py-1.5 hover:bg-secondary" data-testid="button-retry-list"><RotateCw className="size-3.5" /> Retry</button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button onClick={onAccessTest} className="rounded border px-3 py-1.5 hover:bg-secondary" data-testid="button-go-access-test">Go to Access Test</button>
+            <button onClick={() => q.refetch()} className="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 hover:bg-secondary" data-testid="button-retry-list"><RotateCw className="size-3.5" /> Retry</button>
+          </div>
         </div>
       ) : q.data && q.data.items.length === 0 ? (
         <div className="px-4 py-12 text-center text-sm text-muted-foreground" data-testid="empty-list">This folder is empty.</div>
@@ -158,6 +172,7 @@ export default function Home() {
   const status = useGetConnectionStatus({ query: { queryKey: getGetConnectionStatusQueryKey() } });
   const test = useTestConnection();
   const [session, setSession] = useState(0);
+  const [panel, setPanel] = useState<Panel>("viewer");
   const report = test.data;
   const ok = !test.isPending && report?.ok === true;
 
@@ -172,36 +187,68 @@ export default function Home() {
 
   const s = status.data;
 
+  useEffect(() => {
+    if (panel === "viewer" && status.isSuccess && s?.configured && !test.isPending) {
+      run();
+    }
+  }, [panel, status.isSuccess, s?.configured]);
+
+  const viewerHasError = status.isError || (status.isSuccess && !s?.configured) || test.isError || report?.ok === false;
+  const viewerIsConnecting = status.isLoading || (status.isSuccess && s?.configured && (test.isPending || (!report && !test.isError)));
+
   return (
     <div className="min-h-[100dvh]">
-      <div className="border-b border-amber-700/20 bg-amber-100/60 px-4 py-2 text-center text-xs text-amber-900" data-testid="notice-prototype">
-        <ShieldAlert className="mr-1.5 inline size-3.5 -translate-y-px" />
-        Private development prototype. Do not publish until app-level access control is added.
-      </div>
-      <main className="mx-auto max-w-3xl space-y-6 px-4 py-10 sm:py-14">
-        <header className="rise">
-          <div className="font-mono text-xs uppercase tracking-[0.18em] text-primary">App-only access check</div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{s?.siteName ?? "ApplogicKnowledgeBase"} <span className="text-muted-foreground font-normal">/ {s?.libraryName ?? "Shared Documents"}</span></h1>
-          <p className="mt-2 break-all font-mono text-xs text-muted-foreground" data-testid="text-library-url">
-            {s?.libraryUrl ?? "https://sandvine.sharepoint.com/sites/ApplogicKnowledgeBase/Shared%20Documents"}
-          </p>
-        </header>
+      <aside className="fixed inset-y-0 left-0 z-10 flex w-[4.25rem] flex-col items-center border-r bg-card py-4">
+        <nav className="flex flex-col gap-2" role="tablist" aria-label="Application panels" aria-orientation="vertical" onKeyDown={handleTabKeys}>
+          <button
+            type="button"
+            role="tab"
+            id="tab-viewer"
+            aria-label="SharePoint Document Viewer"
+            aria-controls="panel-viewer"
+            aria-selected={panel === "viewer"}
+            tabIndex={panel === "viewer" ? 0 : -1}
+            title="SharePoint Document Viewer"
+            onClick={() => setPanel("viewer")}
+            className={`grid size-10 place-items-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${panel === "viewer" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
+            data-testid="tab-viewer"
+          >
+            <Files className="size-5" />
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-access"
+            aria-label="Access Test"
+            aria-controls="panel-access"
+            aria-selected={panel === "access"}
+            tabIndex={panel === "access" ? 0 : -1}
+            title="Access Test"
+            onClick={() => setPanel("access")}
+            className={`grid size-10 place-items-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${panel === "access" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
+            data-testid="tab-access"
+          >
+            <ShieldCheck className="size-5" />
+          </button>
+        </nav>
+      </aside>
 
-        <section className="rise rounded-lg border bg-card p-5">
-          {status.isLoading ? (
-            <div className="h-5 w-48 animate-pulse rounded bg-muted" />
-          ) : status.isError ? (
-            <div className="text-sm">
-              <span className="text-destructive">Could not load server configuration.</span>
-              <button onClick={() => status.refetch()} className="ml-2 text-primary underline" data-testid="button-retry-status">Retry</button>
-            </div>
-          ) : s && (
-            <>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-sm">
-                  <div className="font-medium" data-testid="status-configured">{s.configured ? "Server credentials present" : "Server credentials incomplete"}</div>
-                  <div className="text-muted-foreground">Credentials are held on the server and never sent to this page.</div>
-                </div>
+      <div className="min-h-[100dvh] pl-[4.25rem]">
+        <header className="sticky top-0 z-[1] flex min-h-16 items-center border-b bg-background/95 px-5 backdrop-blur sm:px-8">
+          <h1 className="text-base font-semibold tracking-tight sm:text-lg">{appName}</h1>
+        </header>
+        <main className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-8">
+          <section
+            id="panel-access"
+            role="tabpanel"
+            aria-labelledby="tab-access"
+            hidden={panel !== "access"}
+            className="rise"
+            data-testid="panel-access"
+          >
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold">Access Test</h2>
+              {s && (
                 <button
                   onClick={run}
                   disabled={!s.configured || test.isPending}
@@ -209,23 +256,93 @@ export default function Home() {
                   data-testid="button-test"
                 >
                   {test.isPending ? <Loader2 className="size-4 animate-spin" /> : <RotateCw className="size-4" />}
-                  {test.isPending ? "Testing" : report ? "Test again" : "Test access"}
+                  {test.isPending ? "Testing" : report ? "Test again" : "Test"}
                 </button>
-              </div>
-              {!s.configured && s.missing.length > 0 && (
-                <div className="mt-4 text-sm" data-testid="text-missing">
-                  Missing server secrets:{" "}
-                  {s.missing.map((m) => <code key={m} className="mr-1.5 rounded bg-secondary px-1.5 py-0.5 font-mono text-xs">{m}</code>)}
-                </div>
               )}
-              {test.isError && <div className="mt-4 text-sm text-destructive" data-testid="error-test">The test request itself failed: {test.error?.message}</div>}
-              {report && !test.isPending && <Report report={report} />}
-            </>
-          )}
-        </section>
+            </div>
 
-        {ok && s && <Browser key={session} libraryName={s.libraryName || "Shared Documents"} />}
-      </main>
+            <section className="rounded-lg border bg-card p-5 sm:p-6">
+              {status.isLoading ? (
+                <div className="h-5 w-48 animate-pulse rounded bg-muted" />
+              ) : status.isError ? (
+                <div className="text-sm">
+                  <span className="text-destructive">Configuration unavailable.</span>
+                  <button onClick={() => status.refetch()} className="ml-2 text-primary underline" data-testid="button-retry-status">Retry</button>
+                </div>
+              ) : s && (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-sm font-medium" data-testid="status-configured">
+                      {s.configured ? "Credentials ready" : "Credentials missing"}
+                    </div>
+                  </div>
+                  {!s.configured && s.missing.length > 0 && (
+                    <div className="mt-3 text-sm" data-testid="text-missing">
+                      {s.missing.map((m) => <code key={m} className="mr-1.5 rounded bg-secondary px-1.5 py-0.5 font-mono text-xs">{m}</code>)}
+                    </div>
+                  )}
+                  {test.isError && <div className="mt-4 text-sm text-destructive" data-testid="error-test">{test.error?.message}</div>}
+                  {report && !test.isPending && <Report report={report} />}
+                </>
+              )}
+            </section>
+          </section>
+
+          <section
+            id="panel-viewer"
+            role="tabpanel"
+            aria-labelledby="tab-viewer"
+            hidden={panel !== "viewer"}
+            className="rise"
+            data-testid="panel-viewer"
+          >
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">SharePoint Document Viewer</h2>
+                {s && <p className="mt-1 text-sm text-muted-foreground">{s.siteName} / {s.libraryName}</p>}
+              </div>
+              {s?.libraryUrl && (
+                <a
+                  href={s.libraryUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm hover:bg-secondary"
+                  data-testid="link-sharepoint-root"
+                >
+                  <ExternalLink className="size-4" />
+                  Shared document root
+                </a>
+              )}
+            </div>
+            {ok && s ? (
+              <Browser key={session} libraryName={s.libraryName || "Shared Documents"} onAccessTest={() => setPanel("access")} />
+            ) : (
+              <div className="rounded-lg border bg-card px-5 py-10 text-center text-sm" role={viewerHasError ? "alert" : "status"}>
+                <p className={viewerHasError ? "text-destructive" : "text-muted-foreground"}>
+                  {viewerIsConnecting
+                    ? "Connecting to SharePoint…"
+                    : status.isError
+                      ? "SharePoint connection unavailable."
+                      : status.isSuccess && !s?.configured
+                        ? "SharePoint credentials missing."
+                        : test.isError || report?.ok === false
+                          ? "Could not connect to the SharePoint folder."
+                          : "Connecting to SharePoint…"}
+                </p>
+                {viewerHasError && (
+                  <button
+                    onClick={() => setPanel("access")}
+                    className="mt-4 rounded border px-3 py-1.5 hover:bg-secondary"
+                    data-testid="button-open-access-test"
+                  >
+                    Go to Access Test
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
+        </main>
+      </div>
     </div>
   );
 }
