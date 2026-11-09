@@ -1,1 +1,2 @@
 - [Identity administration](identity-administration.md) — AD FS terminology was misleading; use manifest evidence and distinguish credentials from permissions.
+- [Preview input focus](preview-input-focus.md) — check Visual Editor selection mode when typing goes to the Agent prompt instead of an input.
