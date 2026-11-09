@@ -3,10 +3,19 @@ import path from "node:path";
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import { clerkMiddleware } from "@clerk/express";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
+const clerkKeys = ["CLERK_PUBLISHABLE_KEY", "CLERK_SECRET_KEY"] as const;
+const missingClerkKeys = clerkKeys.filter(key => !process.env[key]);
+if (missingClerkKeys.length > 0) {
+  throw new Error(`Missing required Clerk configuration: ${missingClerkKeys.join(", ")}`);
+}
+
 const app: Express = express();
+
+app.use(clerkMiddleware());
 
 app.use(
   pinoHttp({

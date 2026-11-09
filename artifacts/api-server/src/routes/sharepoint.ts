@@ -1,8 +1,18 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type RequestHandler } from "express";
+import { getAuth } from "@clerk/express";
 import { GetConnectionStatusResponse, TestConnectionResponse, ListItemsQueryParams, ListItemsResponse } from "@workspace/api-zod";
 import { libraryUrl, missingCredentials, testAccess, listFolder, normalizeError, advice } from "../lib/sharepoint";
 
 const router: IRouter = Router();
+const requireSignedIn: RequestHandler = (req, res, next) => {
+  const { isAuthenticated, userId } = getAuth(req);
+  if (!isAuthenticated || !userId) {
+    res.status(401).json({ error: "Sign in to access SharePoint." });
+    return;
+  }
+  next();
+};
+
 router.use("/sharepoint", (req, res, next) => {
   res.set("Cache-Control", "no-store");
   res.set("X-Content-Type-Options", "nosniff");
@@ -14,6 +24,8 @@ router.use("/sharepoint", (req, res, next) => {
   }
   next();
 });
+router.use("/sharepoint", requireSignedIn);
+
 router.get("/sharepoint/status", (_req, res) => {
   const missing = missingCredentials();
   res.json(GetConnectionStatusResponse.parse({

@@ -1,4 +1,5 @@
 import { useState, type KeyboardEvent } from "react";
+import { useClerk, useUser } from "@clerk/react";
 import {
   useGetConnectionStatus,
   useTestConnection,
@@ -9,12 +10,52 @@ import {
   type DiagnosticStep,
 } from "@workspace/api-client-react";
 import {
-  ArrowUp, Check, ChevronRight, ExternalLink, FileText, Files, Folder, Loader2, Minus, RotateCw, ShieldCheck, X,
+  ArrowUp, Check, ChevronRight, ExternalLink, FileText, Files, Folder, Loader2, LogOut, Minus, RotateCw, ShieldCheck, UserRound, X,
 } from "lucide-react";
 
 type Crumb = { id?: string; name: string };
 type Panel = "access" | "viewer";
 const appName = "Shufflrr-SharePoint Sync Agent";
+
+function AccountActions() {
+  const { user, isLoaded } = useUser();
+  const { signOut } = useClerk();
+  if (!isLoaded || !user) return null;
+
+  const email = user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? "Signed in";
+  const initials = [user.firstName?.[0], user.lastName?.[0]].filter(Boolean).join("").toUpperCase();
+
+  return (
+    <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+      {user.imageUrl ? (
+        <img
+          src={user.imageUrl}
+          alt="Profile"
+          className="size-8 shrink-0 rounded-full object-cover"
+        />
+      ) : (
+        <span
+          className="grid size-8 shrink-0 place-items-center rounded-full bg-accent text-xs font-medium text-accent-foreground"
+          aria-hidden="true"
+        >
+          {initials || <UserRound className="size-4" />}
+        </span>
+      )}
+      <span className="hidden max-w-[min(36vw,18rem)] truncate text-sm text-muted-foreground sm:block">
+        {email}
+      </span>
+      <button
+        type="button"
+        onClick={() => void signOut({ redirectUrl: "/" })}
+        aria-label="Log out"
+        title="Log out"
+        className="grid size-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <LogOut className="size-4" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
 
 function handleTabKeys(event: KeyboardEvent<HTMLElement>) {
   const key = event.key;
@@ -221,8 +262,9 @@ export default function Home() {
       </aside>
 
       <div className="min-h-[100dvh] pl-[4.25rem]">
-        <header className="sticky top-0 z-[1] flex min-h-16 items-center border-b bg-background/95 px-5 backdrop-blur sm:px-8">
+        <header className="sticky top-0 z-[1] flex min-h-16 items-center justify-between gap-4 border-b bg-background/95 px-5 backdrop-blur sm:px-8">
           <h1 className="text-base font-semibold tracking-tight sm:text-lg">{appName}</h1>
+          <AccountActions />
         </header>
         <main className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-8">
           <section
