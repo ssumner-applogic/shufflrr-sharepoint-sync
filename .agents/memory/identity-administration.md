@@ -8,11 +8,11 @@ The user described the connection as managed in AD FS and selected AD FS Applica
 
 **How to apply:** Prioritize concrete manifest and runtime evidence over ambiguous identity-provider terminology. Distinguish invalid credentials from delegated-only permissions and missing site grants. Do not ask for a new app registration merely because the organization uses AD FS.
 
-Clerk is not involved in this application. The user clarified that the Clerk configuration was only an example of how they connected previously.
+The user is setting up Clerk email login for this app. Its frontend is React + Vite and its API is Express, not Next.js.
 
-**Why:** The user explicitly corrected an inference drawn from the uploaded manifest's callback URL.
+**Why:** On 2026-11-09, the user said they were configuring Clerk email login; this supersedes their earlier clarification that Clerk was only an example.
 
-**How to apply:** Keep this browser's connection app-only through Microsoft Graph. Do not add Clerk or treat its example callback as a dependency.
+**How to apply:** Follow React/Vite client and Express server patterns for Clerk integration. Keep Microsoft Graph app-only credentials separate and server-side.
 
 For administrator Graph PowerShell sign-in on the user's Windows environment, prefer device-code authentication when the WAM interactive popup fails.
 
