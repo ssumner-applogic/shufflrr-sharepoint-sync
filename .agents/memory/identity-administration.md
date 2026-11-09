@@ -14,6 +14,12 @@ The user is setting up Clerk email login for this app. Its frontend is React + V
 
 **How to apply:** Follow React/Vite client and Express server patterns for Clerk integration. Keep Microsoft Graph app-only credentials separate and server-side.
 
+The user manages account creation and sign-up availability in Clerk settings; do not add separate app-side user management unless asked.
+
+**Why:** The user said they can create users or allow sign-ups through the selected Clerk application's settings.
+
+**How to apply:** Keep the app's sign-in/sign-up screens integrated with Clerk, and leave account provisioning policy to Clerk.
+
 For administrator Graph PowerShell sign-in on the user's Windows environment, prefer device-code authentication when the WAM interactive popup fails.
 
 **Why:** The user confirmed device-code sign-in succeeded after interactive sign-in failures.
