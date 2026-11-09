@@ -5,10 +5,15 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "shufflrr:validate": "tsx ./src/shufflrr/validate.ts",
+    "test:shufflrr": "tsx --test ./src/shufflrr/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "tsx": "catalog:"
+  },
+  "dependencies": {
+    "tough-cookie": "6.1.0"
   }
 }

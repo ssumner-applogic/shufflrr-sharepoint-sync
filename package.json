@@ -7,6 +7,8 @@
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
     "build": "pnpm run typecheck && pnpm --filter @workspace/sharepoint-browser run build && pnpm --filter @workspace/api-server run build",
     "start": "SERVE_FRONTEND=true node --enable-source-maps artifacts/api-server/dist/index.mjs",
+    "shufflrr:validate": "pnpm --silent --filter @workspace/scripts run shufflrr:validate",
+    "test:shufflrr": "pnpm --filter @workspace/scripts run test:shufflrr",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },

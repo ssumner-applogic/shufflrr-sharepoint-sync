@@ -18,3 +18,8 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+SHUFFLRR_API_BASE_URL = "https://sandvine.shufflrr.com/api"
