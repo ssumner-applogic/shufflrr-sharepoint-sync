@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { GetConnectionStatusResponse, TestConnectionResponse, ListItemsQueryParams, ListItemsResponse } from "@workspace/api-zod";
-import { libraryUrl, missingCredentials, productionBlocked, testAccess, listFolder, normalizeError, advice } from "../lib/sharepoint";
+import { libraryUrl, missingCredentials, testAccess, listFolder, normalizeError, advice } from "../lib/sharepoint";
 
 const router: IRouter = Router();
 router.use("/sharepoint", (req, res, next) => {
@@ -18,14 +18,13 @@ router.get("/sharepoint/status", (_req, res) => {
   const missing = missingCredentials();
   res.json(GetConnectionStatusResponse.parse({
     configured: !missing.length, missing, libraryUrl, siteName: "ApplogicKnowledgeBase",
-    libraryName: "Shared Documents", productionBlocked: productionBlocked(),
+    libraryName: "Shared Documents", productionBlocked: false,
   }));
 });
 router.post("/sharepoint/test", async (_req, res): Promise<void> => {
   res.json(TestConnectionResponse.parse(await testAccess()));
 });
 router.get("/sharepoint/items", async (req, res): Promise<void> => {
-  if (productionBlocked()) { res.status(503).json({ error: "SharePoint access is disabled outside development until app-level authentication is added." }); return; }
   const query = ListItemsQueryParams.safeParse(req.query);
   if (!query.success || (query.data.folderId?.length || 0) > 500 || (query.data.cursor?.length || 0) > 20000) {
     res.status(400).json({ error: "Invalid folder or pagination parameters." }); return;

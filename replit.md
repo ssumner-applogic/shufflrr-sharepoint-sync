@@ -30,7 +30,7 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 - This is an app-only Microsoft Graph client; do not replace it with delegated user OAuth without discussing the change.
 - The user requested a minimal document viewer with real access testing and actionable information about missing configuration. The final access check briefly creates and removes a uniquely named temporary file to verify effective write access.
-- SharePoint data endpoints are disabled outside development until app-level authentication and authorization are added. This prevents an accidental publish from exposing organizational files.
+- SharePoint access uses server-side Microsoft app-only credentials. Anyone who can reach the published viewer can browse the target Shared Documents library; keep the app registration restricted to the intended site and store credentials only in server-side secrets.
 
 ## Product
 

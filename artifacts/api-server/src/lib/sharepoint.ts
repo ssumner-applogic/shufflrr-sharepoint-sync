@@ -14,7 +14,6 @@ interface GraphItem {
 interface GraphPage { value: GraphItem[]; "@odata.nextLink"?: string }
 const keys = ["MICROSOFT_TENANT_ID", "MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET"] as const;
 export const missingCredentials = () => keys.filter(key => !process.env[key]);
-export const productionBlocked = () => process.env.NODE_ENV !== "development";
 
 export class AccessError extends Error {
   constructor(public code: string, message: string, public status = 502, public requestId?: string) {
@@ -39,7 +38,6 @@ export function advice(error: AccessError): string[] {
   ];
   if (error.status === 404) return ["Confirm the site and library URL. Microsoft can also hide inaccessible resources as not found; ask the administrator to verify the app's site read grant."];
   if (error.code === "LibraryNotFound") return ["Confirm the document library URL or provide its drive ID. The site was resolved, but no library matched Shared Documents."];
-  if (error.code === "ProductionBlocked") return ["This prototype only exposes SharePoint data in development. Add application-level sign-in and authorization before publishing."];
   if (error.status === 429) return ["Microsoft throttled the request. Wait before retrying."];
   return ["Review the failed step and Microsoft error code. If permissions are delegated only, configure application permissions for this app-only connection."];
 }
@@ -276,7 +274,6 @@ export async function testAccess(): Promise<AccessReport> {
   ];
   for (let i = 0; i < names.length; i++) {
     try {
-      if (productionBlocked()) throw new AccessError("ProductionBlocked", "Access is disabled outside development until app-level authentication is added.", 503);
       report.steps.push({ name: names[i]!, status: "passed", message: await operations[i]!() });
     } catch (err) {
       const e = normalizeError(err);
@@ -287,6 +284,6 @@ export async function testAccess(): Promise<AccessReport> {
     }
   }
   report.ok = true;
-  report.advice = ["Read and write access confirmed. The temporary write-test file was removed.", "Keep this development prototype private. Add app-level authentication and authorization before publishing."];
+  report.advice = ["Read and write access confirmed. The temporary write-test file was removed.", "The Microsoft app credentials authorize access to this library; anyone who can reach the published viewer can browse it."];
   return report;
 }

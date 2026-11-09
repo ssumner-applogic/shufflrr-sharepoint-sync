@@ -1,5 +1,4 @@
-import { useEffect, useState, type KeyboardEvent } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useState, type KeyboardEvent } from "react";
 import {
   useGetConnectionStatus,
   useTestConnection,
@@ -168,34 +167,21 @@ function Browser({ libraryName, onAccessTest }: { libraryName: string; onAccessT
 }
 
 export default function Home() {
-  const qc = useQueryClient();
   const status = useGetConnectionStatus({ query: { queryKey: getGetConnectionStatusQueryKey() } });
   const test = useTestConnection();
-  const [session, setSession] = useState(0);
   const [panel, setPanel] = useState<Panel>("viewer");
   const report = test.data;
-  const readOk = !test.isPending && !!report && report.steps.slice(0, 4).every((step) => step.status === "passed");
-  const writeFailed = readOk && report.steps.some((step) => step.name === "Verify write access" && step.status === "failed");
+  const readOk = !!report && report.steps.slice(0, 4).every((step) => step.status === "passed");
+  const writeFailed = readOk && report?.steps.some((step) => step.name === "Verify write access" && step.status === "failed");
 
   const run = () => {
-    test.mutate(undefined, {
-      onSuccess: (r) => {
-        qc.removeQueries({ queryKey: ["/api/sharepoint/items"] });
-        if (r.steps.slice(0, 4).every((step) => step.status === "passed")) setSession((n) => n + 1);
-      },
-    });
+    test.mutate();
   };
 
   const s = status.data;
 
-  useEffect(() => {
-    if (panel === "viewer" && status.isSuccess && s?.configured && !test.isPending) {
-      run();
-    }
-  }, [panel, status.isSuccess, s?.configured]);
-
-  const viewerHasError = status.isError || (status.isSuccess && !s?.configured) || test.isError || (!!report && report.steps.slice(0, 4).some((step) => step.status === "failed"));
-  const viewerIsConnecting = status.isLoading || (status.isSuccess && s?.configured && (test.isPending || (!report && !test.isError)));
+  const viewerHasError = status.isError || (status.isSuccess && !s?.configured);
+  const viewerIsConnecting = status.isLoading;
 
   return (
     <div className="min-h-[100dvh]">
@@ -315,7 +301,7 @@ export default function Home() {
                 </a>
               )}
             </div>
-            {readOk && s ? (
+            {s?.configured ? (
               <>
                 {writeFailed && (
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm" role="alert">
@@ -323,7 +309,7 @@ export default function Home() {
                     <button onClick={() => setPanel("access")} className="rounded border bg-card px-3 py-1.5 hover:bg-secondary" data-testid="button-open-access-test">Go to Access Test</button>
                   </div>
                 )}
-                <Browser key={session} libraryName={s.libraryName || "Shared Documents"} onAccessTest={() => setPanel("access")} />
+                <Browser libraryName={s.libraryName || "Shared Documents"} onAccessTest={() => setPanel("access")} />
               </>
             ) : (
               <div className="rounded-lg border bg-card px-5 py-10 text-center text-sm" role={viewerHasError ? "alert" : "status"}>
@@ -334,9 +320,7 @@ export default function Home() {
                       ? "SharePoint connection unavailable."
                       : status.isSuccess && !s?.configured
                         ? "SharePoint credentials missing."
-                        : test.isError || report?.ok === false
-                          ? "Could not connect to the SharePoint folder."
-                          : "Connecting to SharePoint…"}
+                      : "Connecting to SharePoint…"}
                 </p>
                 {viewerHasError && (
                   <button
