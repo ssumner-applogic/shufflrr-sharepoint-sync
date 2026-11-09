@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "Wx3WTxRSNzP9SMAO-21YO"
+uri = "file://generated-artifacts/shufflrr/directory-tree.txt"
+type = "text"
+title = "Shufflrr Directory Tree"
+description = "Live read-only scan: 551 folders and 1,701 files. All 551 folders were read successfully, with no issues. Contains private business folder and file names."
+logical_id = "de2b76ae-cca8-4aa9-bb1a-8379903f54a8"
+content_hash = "sha256:28e3649e8141e8444449a141bd4626f50454ab579ccb11ee24d645205f819712"
+size = 241230
+mtime_ms = 1794249429714
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:3041f921-8288-4e2d-9a4d-8f92ec59f744/de2b76ae-cca8-4aa9-bb1a-8379903f54a8/5fbdf2c3-70aa-418d-9be4-4d27b6af24af"
+storage_version_token = "1794249445002209"
+content_type = "text/plain"
