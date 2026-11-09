@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 type Crumb = { id?: string; name: string };
-type Panel = "access" | "viewer";
+type Panel = "access" | "viewer" | "shufflrr";
 const appName = "Shufflrr-SharePoint Sync Agent";
 
 function AccountActions() {
@@ -246,6 +246,21 @@ export default function Home() {
           <button
             type="button"
             role="tab"
+            id="tab-shufflrr"
+            aria-label="Shufflrr Viewer"
+            aria-controls="panel-shufflrr"
+            aria-selected={panel === "shufflrr"}
+            tabIndex={panel === "shufflrr" ? 0 : -1}
+            title="Shufflrr Viewer"
+            onClick={() => setPanel("shufflrr")}
+            className={`grid size-10 place-items-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${panel === "shufflrr" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
+            data-testid="tab-shufflrr"
+          >
+            <FileText className="size-5" />
+          </button>
+          <button
+            type="button"
+            role="tab"
             id="tab-access"
             aria-label="Access Test"
             aria-controls="panel-access"
@@ -375,6 +390,22 @@ export default function Home() {
                 )}
               </div>
             )}
+          </section>
+
+          <section
+            id="panel-shufflrr"
+            role="tabpanel"
+            aria-labelledby="tab-shufflrr"
+            hidden={panel !== "shufflrr"}
+            className="rise"
+            data-testid="panel-shufflrr"
+          >
+            <div className="mb-5">
+              <h2 className="text-lg font-semibold">Shufflrr Viewer</h2>
+            </div>
+            <div className="rounded-lg border bg-card px-5 py-12 text-center text-sm text-muted-foreground">
+              Shufflrr content will appear here.
+            </div>
           </section>
         </main>
       </div>
