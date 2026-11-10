@@ -10,6 +10,103 @@ export interface ShufflrrRequestError {
   requestId: string;
 }
 
+export interface SyncSourceFolder {
+  /** @minimum 1 */
+  id: number;
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  name: string;
+}
+
+export type SyncConflictKind = typeof SyncConflictKind[keyof typeof SyncConflictKind];
+
+
+export const SyncConflictKind = {
+  'path-conflict': 'path-conflict',
+  'untracked-sharepoint-item': 'untracked-sharepoint-item',
+} as const;
+
+export interface SyncConflict {
+  path: string;
+  kind: SyncConflictKind;
+}
+
+export interface SyncSummary {
+  /** @minimum 0 */
+  createdFolders: number;
+  /** @minimum 0 */
+  copiedFiles: number;
+  /** @minimum 0 */
+  updatedFiles: number;
+  /** @minimum 0 */
+  deletedItems: number;
+  /** @minimum 0 */
+  conflicts: number;
+}
+
+export interface SyncDetachedPair {
+  id: number;
+  sourceRootName: string;
+  destinationFolderName: string;
+  createdAt: string;
+}
+
+/**
+ * @nullable
+ */
+export type SyncConfigLastRunStatus = typeof SyncConfigLastRunStatus[keyof typeof SyncConfigLastRunStatus] | null;
+
+
+export const SyncConfigLastRunStatus = {
+  running: 'running',
+  success: 'success',
+  partial: 'partial',
+  failed: 'failed',
+} as const;
+
+export interface SyncConfig {
+  configured: boolean;
+  /** @nullable */
+  destinationFolderId: string | null;
+  /** @nullable */
+  destinationFolderName: string | null;
+  sourceFolders: SyncSourceFolder[];
+  enabled: boolean;
+  /** @nullable */
+  lastRunAt: string | null;
+  /** @nullable */
+  lastRunStatus: SyncConfigLastRunStatus;
+  lastRunSummary: SyncSummary | null;
+  lastRunConflicts: SyncConflict[];
+  /** @nullable */
+  lastRunError: string | null;
+  detachedPairs: SyncDetachedPair[];
+}
+
+export interface SyncConfigInput {
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  destinationFolderId: string;
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  destinationFolderName: string;
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  sourceFolders: SyncSourceFolder[];
+}
+
+export interface SyncEnabledInput {
+  enabled: boolean;
+}
+
 export interface ShufflrrItem {
   id: number;
   name: string;

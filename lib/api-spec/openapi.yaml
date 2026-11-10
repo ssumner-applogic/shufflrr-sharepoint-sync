@@ -11,6 +11,68 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /sync/config:
+    get:
+      operationId: getSyncConfig
+      summary: Read the shared Shufflrr to SharePoint sync configuration
+      responses:
+        "200":
+          description: Shared sync configuration and status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncConfig" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
+    put:
+      operationId: saveSyncConfig
+      summary: Save the shared sync folders while sync is disabled
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SyncConfigInput" }
+      responses:
+        "200":
+          description: Updated shared sync configuration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncConfig" }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "409": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
+  /sync/enabled:
+    put:
+      operationId: setSyncEnabled
+      summary: Enable or pause scheduled synchronization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SyncEnabledInput" }
+      responses:
+        "200":
+          description: Updated sync state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncConfig" }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
+  /sync/orphans/{id}:
+    delete:
+      operationId: dismissSyncOrphan
+      summary: Acknowledge and dismiss a detached sync pair notice
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "204": { description: Notice dismissed }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "404": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
   /shufflrr/items:
     get:
       operationId: listShufflrrItems
@@ -215,6 +277,72 @@ components:
       properties:
         error: { type: string }
         requestId: { type: string }
+    SyncSourceFolder:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer, minimum: 1 }
+        name: { type: string, minLength: 1, maxLength: 255 }
+    SyncConflict:
+      type: object
+      required: [path, kind]
+      properties:
+        path: { type: string }
+        kind: { type: string, enum: [path-conflict, untracked-sharepoint-item] }
+    SyncSummary:
+      type: object
+      required: [createdFolders, copiedFiles, updatedFiles, deletedItems, conflicts]
+      properties:
+        createdFolders: { type: integer, minimum: 0 }
+        copiedFiles: { type: integer, minimum: 0 }
+        updatedFiles: { type: integer, minimum: 0 }
+        deletedItems: { type: integer, minimum: 0 }
+        conflicts: { type: integer, minimum: 0 }
+    SyncDetachedPair:
+      type: object
+      required: [id, sourceRootName, destinationFolderName, createdAt]
+      properties:
+        id: { type: integer }
+        sourceRootName: { type: string }
+        destinationFolderName: { type: string }
+        createdAt: { type: string, format: date-time }
+    SyncConfig:
+      type: object
+      required: [configured, destinationFolderId, destinationFolderName, sourceFolders, enabled, lastRunAt, lastRunStatus, lastRunSummary, lastRunConflicts, lastRunError, detachedPairs]
+      properties:
+        configured: { type: boolean }
+        destinationFolderId: { type: ["string", "null"] }
+        destinationFolderName: { type: ["string", "null"] }
+        sourceFolders:
+          type: array
+          items: { $ref: "#/components/schemas/SyncSourceFolder" }
+        enabled: { type: boolean }
+        lastRunAt: { type: ["string", "null"], format: date-time }
+        lastRunStatus: { type: ["string", "null"], enum: [running, success, partial, failed, null] }
+        lastRunSummary: { oneOf: [{ $ref: "#/components/schemas/SyncSummary" }, { type: "null" }] }
+        lastRunConflicts:
+          type: array
+          items: { $ref: "#/components/schemas/SyncConflict" }
+        lastRunError: { type: ["string", "null"] }
+        detachedPairs:
+          type: array
+          items: { $ref: "#/components/schemas/SyncDetachedPair" }
+    SyncConfigInput:
+      type: object
+      required: [destinationFolderId, destinationFolderName, sourceFolders]
+      properties:
+        destinationFolderId: { type: string, minLength: 1, maxLength: 500 }
+        destinationFolderName: { type: string, minLength: 1, maxLength: 255 }
+        sourceFolders:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/SyncSourceFolder" }
+    SyncEnabledInput:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
     ShufflrrItem:
       type: object
       required: [id, name, isFolder, size, modifiedAt, permissions]

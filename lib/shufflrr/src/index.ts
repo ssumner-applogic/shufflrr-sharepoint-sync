@@ -188,6 +188,11 @@ export class ShufflrrClient {
     this.requireSession();
     return parseEntries(await this.request("/folders", "/folders"), true);
   }
+  async folder(id: number): Promise<Entry> {
+    this.requireSession();
+    if (!Number.isSafeInteger(id) || id < 1) throw new ShufflrrError("schema", "Invalid folder ID.");
+    return parseEntries([await this.request(`/folders/${id}`, "/folders/{id}")], true)[0];
+  }
   async contents(id: number): Promise<Entry[]> {
     this.requireSession();
     if (!Number.isSafeInteger(id) || id < 0) throw new ShufflrrError("schema", "Invalid folder ID.");

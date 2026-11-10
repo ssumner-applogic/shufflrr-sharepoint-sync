@@ -14,6 +14,7 @@ import {
 import { ShufflrrViewer } from "@/components/shufflrr/ShufflrrViewer";
 import { SharePointTree } from "@/components/sharepoint/SharePointTree";
 import { ShufflrrAccessCheck } from "@/components/shufflrr/ShufflrrAccessCheck";
+import { SyncAgent } from "@/components/sync/SyncAgent";
 
 type Panel = "access" | "viewer" | "shufflrr" | "sync";
 const appName = "Shufflrr-SharePoint Sync Agent";
@@ -349,7 +350,7 @@ export default function Home() {
             className="rise"
             data-testid="panel-sync"
           >
-            <h2 className="text-lg font-semibold">Sync Agent</h2>
+            <SyncAgent active={panel === "sync"} />
           </section>
         </main>
       </div>

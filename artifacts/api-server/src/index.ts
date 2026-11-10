@@ -32,6 +32,12 @@ const shutdown = (signal: NodeJS.Signals) => {
   server.close(async error => {
     try { await closeShufflrrSessions(); }
     catch { logger.warn({ event: "shufflrr_session_cleanup_failed" }, "Connection cleanup failed during shutdown."); }
+    try {
+      const database = await import("@workspace/db");
+      await database.pool.end();
+    } catch {
+      logger.warn({ event: "database_cleanup_failed" }, "Database connection cleanup failed during shutdown.");
+    }
     clearTimeout(timeout);
     if (error) {
       logger.error({ err: error, signal }, "Error during shutdown");
@@ -44,3 +50,12 @@ const shutdown = (signal: NodeJS.Signals) => {
 
 process.once("SIGTERM", shutdown);
 process.once("SIGINT", shutdown);
+
+if (process.env.NODE_ENV === "development") {
+  const timer = setInterval(() => {
+    void import("./lib/sync-runner")
+      .then(({ runScheduledSync }) => runScheduledSync())
+      .catch(() => logger.warn({ event: "development_sync_run_failed" }, "Development sync run did not complete."));
+  }, 60_000);
+  timer.unref();
+}

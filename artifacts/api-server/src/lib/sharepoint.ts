@@ -9,6 +9,8 @@ interface GraphItem {
   webUrl?: string;
   folder?: unknown;
   size?: number;
+  cTag?: string;
+  eTag?: string;
   lastModifiedDateTime?: string;
   parentReference?: { id?: string };
 }
@@ -185,7 +187,7 @@ function itemResult(item: GraphItem) {
 
 async function getDriveItem(driveId: string, itemId: string): Promise<GraphItem> {
   return graph<GraphItem>(
-    `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}?$select=id,name,folder,size,lastModifiedDateTime,webUrl,parentReference`,
+    `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}?$select=id,name,folder,size,lastModifiedDateTime,webUrl,parentReference,cTag,eTag`,
   );
 }
 
@@ -290,6 +292,112 @@ export async function deleteSharePointItem(itemId: string): Promise<void> {
     throw new AccessError("ProtectedRoot", "The library root cannot be deleted.", 400);
   }
   await graph<void>(`/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}`, { method: "DELETE" });
+}
+
+export interface SyncDriveItem {
+  id: string;
+  name: string;
+  isFolder: boolean;
+  size: number;
+  modifiedAt: string;
+  cTag?: string;
+  parentId?: string;
+}
+
+function syncDriveItem(item: GraphItem): SyncDriveItem {
+  return {
+    id: item.id,
+    name: item.name,
+    isFolder: !!item.folder,
+    size: item.size ?? 0,
+    modifiedAt: item.lastModifiedDateTime ?? "",
+    ...(item.cTag ? { cTag: item.cTag } : {}),
+    ...(item.parentReference?.id ? { parentId: item.parentReference.id } : {}),
+  };
+}
+
+export async function getSyncDriveItem(itemId: string): Promise<SyncDriveItem> {
+  const { driveId } = await location();
+  if (itemId === "root") {
+    const rootId = await getRootId(driveId);
+    return syncDriveItem(await getDriveItem(driveId, rootId));
+  }
+  return syncDriveItem(await getDriveItem(driveId, itemId));
+}
+
+export async function listSyncFolder(folderId: string): Promise<SyncDriveItem[]> {
+  const { driveId } = await location();
+  const resolvedId = folderId === "root" ? await getRootId(driveId) : folderId;
+  const folder = await getDriveItem(driveId, resolvedId);
+  if (!folder.folder) throw new AccessError("InvalidDestination", "The configured SharePoint destination is not a folder.", 400);
+
+  const result: SyncDriveItem[] = [];
+  let next: string | undefined =
+    `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(resolvedId)}/children?$select=id,name,folder,size,lastModifiedDateTime,webUrl,parentReference,cTag,eTag&$top=200`;
+  let pages = 0;
+  while (next) {
+    if (++pages > 1000 || result.length > 100_000) {
+      throw new AccessError("SyncLimit", "The SharePoint folder exceeded the sync safety limit.", 413);
+    }
+    const page: GraphPage = await graph<GraphPage>(next);
+    if (!Array.isArray(page.value)) throw new AccessError("GraphSchema", "SharePoint returned an unexpected folder listing.");
+    result.push(...page.value.map(syncDriveItem));
+    next = page["@odata.nextLink"];
+  }
+  return result;
+}
+
+export async function createSyncFolder(parentId: string, name: string): Promise<SyncDriveItem> {
+  const created = await createSharePointFolder(name, parentId === "root" ? null : parentId);
+  return getSyncDriveItem(created.id);
+}
+
+export async function updateSyncItem(
+  itemId: string,
+  update: { name: string; parentId: string },
+): Promise<SyncDriveItem> {
+  await updateSharePointItem(itemId, {
+    name: update.name,
+    parentId: update.parentId === "root" ? null : update.parentId,
+  });
+  return getSyncDriveItem(itemId);
+}
+
+export async function uploadSyncFile(
+  parentId: string,
+  name: string,
+  bytes: Uint8Array,
+  existingId?: string,
+): Promise<SyncDriveItem> {
+  validateItemName(name);
+  if (bytes.byteLength > 100 * 1024 * 1024) {
+    throw new AccessError("SyncLimit", "Files larger than 100 MiB are not supported by this sync.", 413);
+  }
+  const { driveId } = await location();
+  const resolvedParentId = parentId === "root" ? await getRootId(driveId) : parentId;
+  const path = existingId
+    ? `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(existingId)}/content`
+    : `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(resolvedParentId)}:/${encodeURIComponent(name)}:/content`;
+  try {
+    const item = await graph<GraphItem>(path, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        ...(existingId ? {} : { "If-None-Match": "*" }),
+      },
+      body: bytes,
+    });
+    return syncDriveItem(item);
+  } catch (error) {
+    if (!existingId && error instanceof AccessError && error.status === 412) {
+      throw new AccessError("SyncConflict", "A SharePoint item appeared at this path during sync; it was left unchanged.", 409);
+    }
+    throw error;
+  }
+}
+
+export async function deleteSyncItem(itemId: string): Promise<void> {
+  await deleteSharePointItem(itemId);
 }
 
 async function findWriteProbe(driveId: string, fileName: string): Promise<string | undefined> {

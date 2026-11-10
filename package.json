@@ -10,6 +10,9 @@
     "shufflrr:validate": "pnpm --silent --filter @workspace/scripts run shufflrr:validate",
     "shufflrr:probe": "pnpm --silent --filter @workspace/scripts run shufflrr:probe",
     "test:shufflrr": "pnpm --filter @workspace/scripts run test:shufflrr",
+    "db:migrate": "pnpm --filter @workspace/db run migrate",
+    "sync:run": "pnpm --filter @workspace/api-server run sync:run",
+    "sync:watch": "node --enable-source-maps artifacts/api-server/dist/sync-watch.mjs",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },

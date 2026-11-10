@@ -10,7 +10,8 @@ A sign-in-protected SharePoint and Shufflrr document browser with access diagnos
    - Clerk: `CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`.
    - Microsoft Graph: `MICROSOFT_TENANT_ID`, `MICROSOFT_CLIENT_ID`, and `MICROSOFT_CLIENT_SECRET`.
    - Optionally `SESSION_SECRET` for signing pagination cursors independently of the Microsoft client secret.
-4. Start the Replit-managed API and web workflows.
+4. Apply the additive sync schema to the development database with `pnpm db:migrate`.
+5. Start the Replit-managed API and web workflows.
 
 The Clerk publishable key is served to the web app by `/api/auth/config`; it is public by design. The Clerk secret key and Microsoft credentials remain server-only. Email/password sign-in and whether users can sign up are controlled by the selected Clerk application's settings.
 
@@ -19,10 +20,20 @@ Useful commands:
 - `pnpm run typecheck` — check all workspace packages.
 - `pnpm run build` — production-build the SharePoint web app and API.
 - `pnpm start` — run the combined production server. It uses `PORT` supplied by the host.
+- `pnpm db:migrate` — explicitly apply the PostgreSQL schema migration.
+- `pnpm sync:run` — execute one sync pass; `pnpm --filter @workspace/api-server run sync:watch` runs the continuous worker.
 
 ## Deployment
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for Railway and Google Cloud Run setup, health checks, and production secrets.
+
+## Continuous Shufflrr sync
+
+The Sync Agent stores one shared configuration in PostgreSQL. All signed-in Clerk users can edit it. Each selected Shufflrr folder is mirrored into a same-named folder under the selected SharePoint destination. Source edits, renames, moves, and deletions are mirrored; changed SharePoint copies are overwritten from Shufflrr. Only mapped items inside the configured destination are deleted. Existing SharePoint path conflicts and SharePoint-only items are reported and left untouched.
+
+When a source folder is deselected or the destination changes, existing copies remain. The app lists the detached source/destination pairs until a user dismisses each notice; users can delete those old SharePoint copies manually if wanted. Files larger than 100 MiB are not synced.
+
+In Replit development, the API workflow checks for enabled sync every minute. In Railway production, run a separate continuous worker service with `node --enable-source-maps artifacts/api-server/dist/sync-watch.mjs`. Railway Cron Jobs have a five-minute minimum interval, so they cannot meet the selected one-minute polling interval. See [DEPLOYMENT.md](DEPLOYMENT.md) for production database and worker setup, including the required SharePoint `Sites.Selected` write grant.
 
 ## Shufflrr API validator (standalone CLI)
 

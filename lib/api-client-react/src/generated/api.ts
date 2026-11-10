@@ -37,7 +37,10 @@ import type {
   ShufflrrAccessReport,
   ShufflrrErrorResponse,
   ShufflrrListing,
-  ShufflrrProbeInput
+  ShufflrrProbeInput,
+  SyncConfig,
+  SyncConfigInput,
+  SyncEnabledInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -66,6 +69,357 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetSyncConfigUrl = () => {
+
+
+
+
+  return `/api/sync/config`
+}
+
+/**
+ * @summary Read the shared Shufflrr to SharePoint sync configuration
+ */
+export const getSyncConfig = async ( options?: Parameters<typeof customFetch>[1]): Promise<SyncConfig> => {
+
+  return customFetch<SyncConfig>(getGetSyncConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSyncConfigQueryKey = () => {
+    return [
+    `/api/sync/config`
+    ] as const;
+    }
+
+
+export const getGetSyncConfigQueryOptions = <TData = Awaited<ReturnType<typeof getSyncConfig>>, TError = ErrorType<ShufflrrErrorResponse>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncConfig>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSyncConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSyncConfig>>> = ({ signal }) => getSyncConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSyncConfig>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetSyncConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getSyncConfig>>>
+export type GetSyncConfigQueryError = ErrorType<ShufflrrErrorResponse>
+
+
+export function useGetSyncConfig<TData = Awaited<ReturnType<typeof getSyncConfig>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncConfig>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncConfig>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncConfig>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncConfig<TData = Awaited<ReturnType<typeof getSyncConfig>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncConfig>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncConfig>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncConfig>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncConfig<TData = Awaited<ReturnType<typeof getSyncConfig>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncConfig>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Read the shared Shufflrr to SharePoint sync configuration
+ */
+
+export function useGetSyncConfig<TData = Awaited<ReturnType<typeof getSyncConfig>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncConfig>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetSyncConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveSyncConfigUrl = () => {
+
+
+
+
+  return `/api/sync/config`
+}
+
+/**
+ * @summary Save the shared sync folders while sync is disabled
+ */
+export const saveSyncConfig = async (syncConfigInput: SyncConfigInput, options?: Parameters<typeof customFetch>[1]): Promise<SyncConfig> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SyncConfig>(getSaveSyncConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(syncConfigInput)
+  }
+);}
+
+
+
+
+
+export const getSaveSyncConfigMutationKey = () => ['saveSyncConfig'] as const;
+
+export const getSaveSyncConfigMutationOptions = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveSyncConfig>>, TError,SaveSyncConfigMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveSyncConfig>>, TError,SaveSyncConfigMutationVariables, TContext> => {
+
+const mutationKey = getSaveSyncConfigMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveSyncConfig>>, SaveSyncConfigMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveSyncConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveSyncConfigMutationResult = NonNullable<Awaited<ReturnType<typeof saveSyncConfig>>>
+    export type SaveSyncConfigMutationBody = BodyType<SyncConfigInput>
+    export type SaveSyncConfigMutationError = ErrorType<ShufflrrErrorResponse>
+    export type SaveSyncConfigMutationVariables = {data: BodyType<SyncConfigInput>}
+
+    /**
+ * @summary Save the shared sync folders while sync is disabled
+ */
+export const useSaveSyncConfig = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveSyncConfig>>, TError,SaveSyncConfigMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof saveSyncConfig>>,
+        TError,
+        SaveSyncConfigMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSaveSyncConfigMutationOptions(options), queryClient);
+    }
+
+export const getSetSyncEnabledUrl = () => {
+
+
+
+
+  return `/api/sync/enabled`
+}
+
+/**
+ * @summary Enable or pause scheduled synchronization
+ */
+export const setSyncEnabled = async (syncEnabledInput: SyncEnabledInput, options?: Parameters<typeof customFetch>[1]): Promise<SyncConfig> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SyncConfig>(getSetSyncEnabledUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(syncEnabledInput)
+  }
+);}
+
+
+
+
+
+export const getSetSyncEnabledMutationKey = () => ['setSyncEnabled'] as const;
+
+export const getSetSyncEnabledMutationOptions = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setSyncEnabled>>, TError,SetSyncEnabledMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setSyncEnabled>>, TError,SetSyncEnabledMutationVariables, TContext> => {
+
+const mutationKey = getSetSyncEnabledMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setSyncEnabled>>, SetSyncEnabledMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  setSyncEnabled(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetSyncEnabledMutationResult = NonNullable<Awaited<ReturnType<typeof setSyncEnabled>>>
+    export type SetSyncEnabledMutationBody = BodyType<SyncEnabledInput>
+    export type SetSyncEnabledMutationError = ErrorType<ShufflrrErrorResponse>
+    export type SetSyncEnabledMutationVariables = {data: BodyType<SyncEnabledInput>}
+
+    /**
+ * @summary Enable or pause scheduled synchronization
+ */
+export const useSetSyncEnabled = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setSyncEnabled>>, TError,SetSyncEnabledMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof setSyncEnabled>>,
+        TError,
+        SetSyncEnabledMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSetSyncEnabledMutationOptions(options), queryClient);
+    }
+
+export const getDismissSyncOrphanUrl = (id: number,) => {
+
+
+
+
+  return `/api/sync/orphans/${id}`
+}
+
+/**
+ * @summary Acknowledge and dismiss a detached sync pair notice
+ */
+export const dismissSyncOrphan = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDismissSyncOrphanUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDismissSyncOrphanMutationKey = () => ['dismissSyncOrphan'] as const;
+
+export const getDismissSyncOrphanMutationOptions = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissSyncOrphan>>, TError,DismissSyncOrphanMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof dismissSyncOrphan>>, TError,DismissSyncOrphanMutationVariables, TContext> => {
+
+const mutationKey = getDismissSyncOrphanMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dismissSyncOrphan>>, DismissSyncOrphanMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  dismissSyncOrphan(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DismissSyncOrphanMutationResult = NonNullable<Awaited<ReturnType<typeof dismissSyncOrphan>>>
+
+    export type DismissSyncOrphanMutationError = ErrorType<ShufflrrErrorResponse>
+    export type DismissSyncOrphanMutationVariables = {id: number}
+
+    /**
+ * @summary Acknowledge and dismiss a detached sync pair notice
+ */
+export const useDismissSyncOrphan = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissSyncOrphan>>, TError,DismissSyncOrphanMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof dismissSyncOrphan>>,
+        TError,
+        DismissSyncOrphanMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDismissSyncOrphanMutationOptions(options), queryClient);
+    }
 
 export const getListShufflrrItemsUrl = (params?: ListShufflrrItemsParams,) => {
   const normalizedParams = new URLSearchParams();

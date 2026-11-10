@@ -9,6 +9,193 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Read the shared Shufflrr to SharePoint sync configuration
+ */
+
+export const getSyncConfigResponseSourceFoldersItemNameMax = 255;
+
+export const getSyncConfigResponseLastRunSummaryOneCreatedFoldersMin = 0;
+
+export const getSyncConfigResponseLastRunSummaryOneCopiedFilesMin = 0;
+
+export const getSyncConfigResponseLastRunSummaryOneUpdatedFilesMin = 0;
+
+export const getSyncConfigResponseLastRunSummaryOneDeletedItemsMin = 0;
+
+export const getSyncConfigResponseLastRunSummaryOneConflictsMin = 0;
+
+
+
+export const GetSyncConfigResponse = zod.object({
+  "configured": zod.boolean(),
+  "destinationFolderId": zod.string().nullable(),
+  "destinationFolderName": zod.string().nullable(),
+  "sourceFolders": zod.array(zod.object({
+  "id": zod.number().int().min(1),
+  "name": zod.string().min(1).max(getSyncConfigResponseSourceFoldersItemNameMax)
+})),
+  "enabled": zod.boolean(),
+  "lastRunAt": zod.coerce.date().nullable(),
+  "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
+  "lastRunSummary": zod.union([zod.object({
+  "createdFolders": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneCreatedFoldersMin),
+  "copiedFiles": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneCopiedFilesMin),
+  "updatedFiles": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneUpdatedFilesMin),
+  "deletedItems": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneDeletedItemsMin),
+  "conflicts": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneConflictsMin)
+}),zod.null()]),
+  "lastRunConflicts": zod.array(zod.object({
+  "path": zod.string(),
+  "kind": zod.enum(['path-conflict', 'untracked-sharepoint-item'])
+})),
+  "lastRunError": zod.string().nullable(),
+  "detachedPairs": zod.array(zod.object({
+  "id": zod.number().int(),
+  "sourceRootName": zod.string(),
+  "destinationFolderName": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Save the shared sync folders while sync is disabled
+ */
+export const saveSyncConfigBodyDestinationFolderIdMax = 500;
+
+export const saveSyncConfigBodyDestinationFolderNameMax = 255;
+
+
+export const saveSyncConfigBodySourceFoldersItemNameMax = 255;
+
+export const saveSyncConfigBodySourceFoldersMax = 100;
+
+
+
+export const SaveSyncConfigBody = zod.object({
+  "destinationFolderId": zod.string().min(1).max(saveSyncConfigBodyDestinationFolderIdMax),
+  "destinationFolderName": zod.string().min(1).max(saveSyncConfigBodyDestinationFolderNameMax),
+  "sourceFolders": zod.array(zod.object({
+  "id": zod.number().int().min(1),
+  "name": zod.string().min(1).max(saveSyncConfigBodySourceFoldersItemNameMax)
+})).min(1).max(saveSyncConfigBodySourceFoldersMax)
+})
+
+
+export const saveSyncConfigResponseSourceFoldersItemNameMax = 255;
+
+export const saveSyncConfigResponseLastRunSummaryOneCreatedFoldersMin = 0;
+
+export const saveSyncConfigResponseLastRunSummaryOneCopiedFilesMin = 0;
+
+export const saveSyncConfigResponseLastRunSummaryOneUpdatedFilesMin = 0;
+
+export const saveSyncConfigResponseLastRunSummaryOneDeletedItemsMin = 0;
+
+export const saveSyncConfigResponseLastRunSummaryOneConflictsMin = 0;
+
+
+
+export const SaveSyncConfigResponse = zod.object({
+  "configured": zod.boolean(),
+  "destinationFolderId": zod.string().nullable(),
+  "destinationFolderName": zod.string().nullable(),
+  "sourceFolders": zod.array(zod.object({
+  "id": zod.number().int().min(1),
+  "name": zod.string().min(1).max(saveSyncConfigResponseSourceFoldersItemNameMax)
+})),
+  "enabled": zod.boolean(),
+  "lastRunAt": zod.coerce.date().nullable(),
+  "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
+  "lastRunSummary": zod.union([zod.object({
+  "createdFolders": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneCreatedFoldersMin),
+  "copiedFiles": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneCopiedFilesMin),
+  "updatedFiles": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneUpdatedFilesMin),
+  "deletedItems": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneDeletedItemsMin),
+  "conflicts": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneConflictsMin)
+}),zod.null()]),
+  "lastRunConflicts": zod.array(zod.object({
+  "path": zod.string(),
+  "kind": zod.enum(['path-conflict', 'untracked-sharepoint-item'])
+})),
+  "lastRunError": zod.string().nullable(),
+  "detachedPairs": zod.array(zod.object({
+  "id": zod.number().int(),
+  "sourceRootName": zod.string(),
+  "destinationFolderName": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Enable or pause scheduled synchronization
+ */
+export const SetSyncEnabledBody = zod.object({
+  "enabled": zod.boolean()
+})
+
+
+export const setSyncEnabledResponseSourceFoldersItemNameMax = 255;
+
+export const setSyncEnabledResponseLastRunSummaryOneCreatedFoldersMin = 0;
+
+export const setSyncEnabledResponseLastRunSummaryOneCopiedFilesMin = 0;
+
+export const setSyncEnabledResponseLastRunSummaryOneUpdatedFilesMin = 0;
+
+export const setSyncEnabledResponseLastRunSummaryOneDeletedItemsMin = 0;
+
+export const setSyncEnabledResponseLastRunSummaryOneConflictsMin = 0;
+
+
+
+export const SetSyncEnabledResponse = zod.object({
+  "configured": zod.boolean(),
+  "destinationFolderId": zod.string().nullable(),
+  "destinationFolderName": zod.string().nullable(),
+  "sourceFolders": zod.array(zod.object({
+  "id": zod.number().int().min(1),
+  "name": zod.string().min(1).max(setSyncEnabledResponseSourceFoldersItemNameMax)
+})),
+  "enabled": zod.boolean(),
+  "lastRunAt": zod.coerce.date().nullable(),
+  "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
+  "lastRunSummary": zod.union([zod.object({
+  "createdFolders": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneCreatedFoldersMin),
+  "copiedFiles": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneCopiedFilesMin),
+  "updatedFiles": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneUpdatedFilesMin),
+  "deletedItems": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneDeletedItemsMin),
+  "conflicts": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneConflictsMin)
+}),zod.null()]),
+  "lastRunConflicts": zod.array(zod.object({
+  "path": zod.string(),
+  "kind": zod.enum(['path-conflict', 'untracked-sharepoint-item'])
+})),
+  "lastRunError": zod.string().nullable(),
+  "detachedPairs": zod.array(zod.object({
+  "id": zod.number().int(),
+  "sourceRootName": zod.string(),
+  "destinationFolderName": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Acknowledge and dismiss a detached sync pair notice
+ */
+
+
+
+export const DismissSyncOrphanParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const DismissSyncOrphanResponse = zod.void()
+
+
+/**
  * @summary List accessible roots or one Shufflrr folder
  */
 
