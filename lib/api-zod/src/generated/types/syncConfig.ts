@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SyncConfigLastRunStatus } from './syncConfigLastRunStatus';
+import type { SyncConfigPollIntervalSeconds } from './syncConfigPollIntervalSeconds';
 import type { SyncConflict } from './syncConflict';
 import type { SyncDetachedPair } from './syncDetachedPair';
 import type { SyncSourceFolder } from './syncSourceFolder';
@@ -19,6 +20,9 @@ export interface SyncConfig {
   destinationFolderName: string | null;
   sourceFolders: SyncSourceFolder[];
   enabled: boolean;
+  pollIntervalSeconds: SyncConfigPollIntervalSeconds;
+  /** @nullable */
+  nextRunAt: Date | null;
   /** @nullable */
   lastRunAt: Date | null;
   /** @nullable */

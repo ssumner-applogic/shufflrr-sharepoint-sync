@@ -40,7 +40,8 @@ import type {
   ShufflrrProbeInput,
   SyncConfig,
   SyncConfigInput,
-  SyncEnabledInput
+  SyncEnabledInput,
+  SyncPollingInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -257,6 +258,94 @@ export const useSaveSyncConfig = <TError = ErrorType<ShufflrrErrorResponse>,
         TContext
       > => {
       return useMutation(getSaveSyncConfigMutationOptions(options), queryClient);
+    }
+
+export const getSetSyncIntervalUrl = () => {
+
+
+
+
+  return `/api/sync/interval`
+}
+
+/**
+ * @summary Set the shared Shufflrr polling interval without changing folders
+ */
+export const setSyncInterval = async (syncPollingInput: SyncPollingInput, options?: Parameters<typeof customFetch>[1]): Promise<SyncConfig> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SyncConfig>(getSetSyncIntervalUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(syncPollingInput)
+  }
+);}
+
+
+
+
+
+export const getSetSyncIntervalMutationKey = () => ['setSyncInterval'] as const;
+
+export const getSetSyncIntervalMutationOptions = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setSyncInterval>>, TError,SetSyncIntervalMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setSyncInterval>>, TError,SetSyncIntervalMutationVariables, TContext> => {
+
+const mutationKey = getSetSyncIntervalMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setSyncInterval>>, SetSyncIntervalMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  setSyncInterval(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetSyncIntervalMutationResult = NonNullable<Awaited<ReturnType<typeof setSyncInterval>>>
+    export type SetSyncIntervalMutationBody = BodyType<SyncPollingInput>
+    export type SetSyncIntervalMutationError = ErrorType<ShufflrrErrorResponse>
+    export type SetSyncIntervalMutationVariables = {data: BodyType<SyncPollingInput>}
+
+    /**
+ * @summary Set the shared Shufflrr polling interval without changing folders
+ */
+export const useSetSyncInterval = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setSyncInterval>>, TError,SetSyncIntervalMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof setSyncInterval>>,
+        TError,
+        SetSyncIntervalMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSetSyncIntervalMutationOptions(options), queryClient);
     }
 
 export const getSetSyncEnabledUrl = () => {

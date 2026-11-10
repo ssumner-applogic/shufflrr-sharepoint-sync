@@ -19,6 +19,7 @@ import {
   listShufflrrItems,
   saveSyncConfig,
   setSyncEnabled,
+  setSyncInterval,
   type LibraryItem,
   type SyncConfig,
   type SyncConfigInput,
@@ -254,6 +255,15 @@ function ShufflrrFolderBranch({
   );
 }
 
+const pollingOptions = [
+  { value: 1, label: "1 second" },
+  { value: 5, label: "5 seconds" },
+  { value: 30, label: "30 seconds" },
+  { value: 60, label: "60 seconds" },
+  { value: 300, label: "5 minutes" },
+  { value: 3600, label: "60 minutes" },
+] as const;
+
 function ConfigStatus({ config }: { config: SyncConfig }) {
   const lastRunAt = config.lastRunAt ? new Date(config.lastRunAt) : null;
   return (
@@ -261,7 +271,9 @@ function ConfigStatus({ config }: { config: SyncConfig }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm font-medium">
           {config.enabled ? "Sync enabled" : "Sync paused"}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">Checks every minute</span>
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            Checks every {pollingOptions.find(option => option.value === config.pollIntervalSeconds)?.label}
+          </span>
         </div>
         <span className="text-xs text-muted-foreground" data-testid="sync-last-run">
           {lastRunAt ? `Last run ${lastRunAt.toLocaleString()}` : "No sync run yet"}
@@ -286,7 +298,7 @@ export function SyncAgent({ active }: { active: boolean }) {
     queryFn: ({ signal }) => getSyncConfigQuery(signal),
     enabled: active,
     staleTime: 10_000,
-    refetchInterval: active ? 30_000 : false,
+    refetchInterval: query => active ? Math.min(30_000, (query.state.data?.pollIntervalSeconds ?? 60) * 1000) : false,
   });
   const config = configQuery.data;
   const [destination, setDestination] = useState<{ id: string; name: string } | null>(null);
@@ -332,6 +344,10 @@ export function SyncAgent({ active }: { active: boolean }) {
     mutationFn: (enabled: boolean) => setSyncEnabled({ enabled }),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }); },
   });
+  const intervalMutation = useMutation({
+    mutationFn: (pollIntervalSeconds: 1 | 5 | 30 | 60 | 300 | 3600) => setSyncInterval({ pollIntervalSeconds }),
+    onSuccess: updated => queryClient.setQueryData(getGetSyncConfigQueryKey(), updated),
+  });
   const dismissMutation = useMutation({
     mutationFn: (id: number) => dismissSyncOrphan(id),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }); },
@@ -375,15 +391,33 @@ export function SyncAgent({ active }: { active: boolean }) {
   };
 
   const saveError = errorText(saveMutation.error);
-  const actionError = errorText(enabledMutation.error) ?? errorText(dismissMutation.error);
+  const actionError = errorText(intervalMutation.error) ?? errorText(enabledMutation.error) ?? errorText(dismissMutation.error);
   const configError = errorText(configQuery.error);
-  const canSave = !!destination && selected.size > 0 && !config?.enabled && !saveMutation.isPending;
+  const canSave = !!destination && selected.size > 0 && !config?.enabled && !saveMutation.isPending && !intervalMutation.isPending;
 
   return (
     <div className="space-y-5" data-testid="sync-agent">
       <div className="sticky top-16 z-[1] flex flex-wrap items-center justify-between gap-3 border-b bg-background py-3">
         <h2 className="text-lg font-semibold">Sync Agent</h2>
         <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Shufflrr polling
+            <select
+              aria-label="Shufflrr polling interval"
+              title="Saved automatically. Runs never overlap; provider cooldowns take priority."
+              value={config?.pollIntervalSeconds ?? 60}
+              disabled={!config || intervalMutation.isPending || saveMutation.isPending || enabledMutation.isPending}
+              onChange={event => {
+                const option = pollingOptions.find(option => option.value === Number(event.target.value));
+                if (option) intervalMutation.mutate(option.value);
+              }}
+              className="h-9 rounded-md border bg-card px-2 text-sm text-foreground disabled:opacity-50"
+              data-testid="select-sync-poll-interval"
+            >
+              {pollingOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+            {intervalMutation.isPending && <Loader2 className="size-4 animate-spin" aria-label="Saving polling interval" />}
+          </label>
           <button
             type="button"
             disabled={!canSave}
@@ -393,6 +427,7 @@ export function SyncAgent({ active }: { active: boolean }) {
                 destinationFolderId: destination.id,
                 destinationFolderName: destination.name,
                 sourceFolders: [...selected.values()],
+                pollIntervalSeconds: config?.pollIntervalSeconds ?? 60,
               });
             }}
             className="inline-flex items-center gap-2 rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
@@ -416,7 +451,7 @@ export function SyncAgent({ active }: { active: boolean }) {
           <button
             type="button"
             onClick={() => enabledMutation.mutate(!config.enabled)}
-            disabled={!config.configured || enabledMutation.isPending}
+            disabled={!config.configured || enabledMutation.isPending || intervalMutation.isPending}
             aria-pressed={config.enabled}
             className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50 ${config.enabled ? "border bg-card hover:bg-secondary" : "bg-primary text-primary-foreground hover:bg-primary/90"}`}
             data-testid="button-toggle-sync"

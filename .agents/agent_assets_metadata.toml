@@ -14,3 +14,17 @@ mtime_ms = 1794249429714
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:3041f921-8288-4e2d-9a4d-8f92ec59f744/de2b76ae-cca8-4aa9-bb1a-8379903f54a8/5fbdf2c3-70aa-418d-9be4-4d27b6af24af"
 storage_version_token = "1794249445002209"
 content_type = "text/plain"
+
+[[outputs]]
+id = "ueo8v6Hh5WA9craNQiOxG"
+uri = "file://docs/sharepoint-connection.md"
+type = "text"
+title = "SharePoint connection guide"
+description = "The three Microsoft variables, required application permissions, access-token request, and basic Microsoft Graph usage. No unrelated integration or application-login details."
+logical_id = "80573e89-eff3-43b6-a213-61e094a3617c"
+content_hash = "sha256:8d95bb3917a9bb794bd92a03324350beea5cf3631b6f0c4d1bc5bff7e7d38e69"
+size = 5182
+mtime_ms = 1794338613514
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:3041f921-8288-4e2d-9a4d-8f92ec59f744/80573e89-eff3-43b6-a213-61e094a3617c/aad5a15a-965d-44ea-87d7-6cea941a1111"
+storage_version_token = "1794338639563727"
+content_type = "text/markdown"

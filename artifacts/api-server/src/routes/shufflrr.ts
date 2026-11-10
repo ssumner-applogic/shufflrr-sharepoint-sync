@@ -14,9 +14,13 @@ import { endShufflrrSession, newShufflrrClient, readShufflrr, shufflrrConfig, sh
 
 const router: IRouter = Router();
 function fail(req: Request, res: Response, error: unknown): void {
+  if (error instanceof ShufflrrError && error.code === "throttled" && error.retryAt) {
+    res.set("Retry-After", String(Math.max(1, Math.ceil((error.retryAt.getTime() - Date.now()) / 1000))));
+  }
   const known = error instanceof ShufflrrError || error instanceof AppConnectionError;
   req.log.warn({ event: "shufflrr_failure", code: known ? error.code : "unexpected" }, "Shufflrr request failed.");
   const status = error instanceof AppConnectionError ? (error.code === "ended" ? 401 : 503)
+    : known && error.code === "throttled" ? 503
     : known && error.code === "configuration" ? 503
     : known && error.code === "permission" ? 403 : 502;
   res.status(status).json({

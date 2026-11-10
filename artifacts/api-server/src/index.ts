@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { closeShufflrrSessions } from "./lib/shufflrr";
+import { startSyncScheduler } from "./lib/sync-scheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -19,6 +20,7 @@ if (Number.isNaN(port) || port <= 0) {
 const server = app.listen(port, "0.0.0.0", () => {
   logger.info({ port }, "Server listening");
 });
+const scheduler = process.env.NODE_ENV === "development" ? startSyncScheduler() : undefined;
 
 const shutdown = (signal: NodeJS.Signals) => {
   logger.info({ signal }, "Server shutdown requested");
@@ -30,6 +32,7 @@ const shutdown = (signal: NodeJS.Signals) => {
   timeout.unref();
 
   server.close(async error => {
+    await scheduler?.stop();
     try { await closeShufflrrSessions(); }
     catch { logger.warn({ event: "shufflrr_session_cleanup_failed" }, "Connection cleanup failed during shutdown."); }
     try {
@@ -50,12 +53,3 @@ const shutdown = (signal: NodeJS.Signals) => {
 
 process.once("SIGTERM", shutdown);
 process.once("SIGINT", shutdown);
-
-if (process.env.NODE_ENV === "development") {
-  const timer = setInterval(() => {
-    void import("./lib/sync-runner")
-      .then(({ runScheduledSync }) => runScheduledSync())
-      .catch(() => logger.warn({ event: "development_sync_run_failed" }, "Development sync run did not complete."));
-  }, 60_000);
-  timer.unref();
-}

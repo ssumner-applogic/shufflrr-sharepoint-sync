@@ -41,6 +41,24 @@ paths:
         "401": { $ref: "#/components/responses/ShufflrrError" }
         "409": { $ref: "#/components/responses/ShufflrrError" }
         "503": { $ref: "#/components/responses/ShufflrrError" }
+  /sync/interval:
+    put:
+      operationId: setSyncInterval
+      summary: Set the shared Shufflrr polling interval without changing folders
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SyncPollingInput" }
+      responses:
+        "200":
+          description: Updated polling interval
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncConfig" }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
   /sync/enabled:
     put:
       operationId: setSyncEnabled
@@ -308,7 +326,7 @@ components:
         createdAt: { type: string, format: date-time }
     SyncConfig:
       type: object
-      required: [configured, destinationFolderId, destinationFolderName, sourceFolders, enabled, lastRunAt, lastRunStatus, lastRunSummary, lastRunConflicts, lastRunError, detachedPairs]
+      required: [configured, destinationFolderId, destinationFolderName, sourceFolders, enabled, pollIntervalSeconds, nextRunAt, lastRunAt, lastRunStatus, lastRunSummary, lastRunConflicts, lastRunError, detachedPairs]
       properties:
         configured: { type: boolean }
         destinationFolderId: { type: ["string", "null"] }
@@ -317,6 +335,8 @@ components:
           type: array
           items: { $ref: "#/components/schemas/SyncSourceFolder" }
         enabled: { type: boolean }
+        pollIntervalSeconds: { type: integer, enum: [1, 5, 30, 60, 300, 3600] }
+        nextRunAt: { type: ["string", "null"], format: date-time }
         lastRunAt: { type: ["string", "null"], format: date-time }
         lastRunStatus: { type: ["string", "null"], enum: [running, success, partial, failed, null] }
         lastRunSummary: { oneOf: [{ $ref: "#/components/schemas/SyncSummary" }, { type: "null" }] }
@@ -331,6 +351,7 @@ components:
       type: object
       required: [destinationFolderId, destinationFolderName, sourceFolders]
       properties:
+        pollIntervalSeconds: { type: integer, enum: [1, 5, 30, 60, 300, 3600], default: 60 }
         destinationFolderId: { type: string, minLength: 1, maxLength: 500 }
         destinationFolderName: { type: string, minLength: 1, maxLength: 255 }
         sourceFolders:
@@ -338,6 +359,11 @@ components:
           minItems: 1
           maxItems: 100
           items: { $ref: "#/components/schemas/SyncSourceFolder" }
+    SyncPollingInput:
+      type: object
+      required: [pollIntervalSeconds]
+      properties:
+        pollIntervalSeconds: { type: integer, enum: [1, 5, 30, 60, 300, 3600] }
     SyncEnabledInput:
       type: object
       required: [enabled]

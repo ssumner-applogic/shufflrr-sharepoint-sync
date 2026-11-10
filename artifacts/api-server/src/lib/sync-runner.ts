@@ -1,9 +1,12 @@
-import { and, eq, inArray, notInArray } from "drizzle-orm";
+import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { logger } from "./logger";
+import { ProviderBackoffError } from "@workspace/shufflrr/http-policy";
+import { loadDestinationSnapshot } from "./sharepoint-snapshot";
 import {
   syncConfigTable,
   syncItemsTable,
+  syncSharepointItemsTable,
   type SyncConflict,
   type SyncRunSummary,
   type SyncSourceFolder,
@@ -14,8 +17,6 @@ import {
   AccessError,
   createSyncFolder,
   deleteSyncItem,
-  getSyncDriveItem,
-  listSyncFolder,
   updateSyncItem,
   uploadSyncFile,
   type SyncDriveItem,
@@ -42,6 +43,7 @@ interface DestinationRecord extends SyncDriveItem {
 
 interface SyncResult {
   skipped: boolean;
+  nextCheckMs?: number;
   status?: "success" | "partial";
   summary?: SyncRunSummary;
 }
@@ -55,7 +57,9 @@ function pathKey(value: string): string {
 }
 
 function safeError(error: unknown): string {
+  if (error instanceof ProviderBackoffError) return "The provider requested a cooldown. Sync will resume after the required delay.";
   if (error instanceof ShufflrrError) {
+    if (error.code === "throttled") return "Shufflrr requested a cooldown. Sync will resume after the required delay.";
     if (error.code === "configuration") return "Shufflrr is not configured on the server.";
     if (error.code === "authentication") return "Shufflrr authentication failed.";
     if (error.code === "permission") return "The Shufflrr service account cannot read a selected folder.";
@@ -99,6 +103,10 @@ function diagnosticCode(error: unknown): string | undefined {
   if (!error || typeof error !== "object") return undefined;
   const value = "code" in error ? error.code : undefined;
   return typeof value === "string" && /^[a-zA-Z0-9_]{1,64}$/.test(value) ? value : undefined;
+}
+
+function retryDate(error: unknown): Date | undefined {
+  return error instanceof ProviderBackoffError || error instanceof ShufflrrError ? error.retryAt : undefined;
 }
 
 async function loadSourceTree(client: ShufflrrClient, roots: SyncSourceFolder[]): Promise<SourceRecord[]> {
@@ -160,42 +168,6 @@ async function loadSourceTree(client: ShufflrrClient, roots: SyncSourceFolder[])
   return records;
 }
 
-async function loadDestinationTree(rootId: string): Promise<{
-  root: SyncDriveItem;
-  records: DestinationRecord[];
-}> {
-  const root = await getSyncDriveItem(rootId);
-  if (!root.isFolder) throw new AccessError("InvalidDestination", "The configured SharePoint destination is not a folder.", 400);
-
-  const records: DestinationRecord[] = [];
-  const queue: Array<{ folder: SyncDriveItem; path: string; depth: number }> = [{
-    folder: root,
-    path: "",
-    depth: 0,
-  }];
-  const visited = new Set<string>([root.id]);
-  let folderCount = 0;
-
-  while (queue.length) {
-    const current = queue.shift()!;
-    const children = await listSyncFolder(current.folder.id);
-    for (const item of children) {
-      if (records.length >= MAX_TOTAL_ITEMS) throw new Error("The SharePoint destination exceeded a sync safety limit.");
-      const path = current.path ? `${current.path}/${item.name}` : item.name;
-      const record: DestinationRecord = { ...item, path };
-      records.push(record);
-      if (!item.isFolder) continue;
-      if (++folderCount > MAX_SOURCE_FOLDERS || current.depth >= MAX_DEPTH) {
-        throw new Error("The SharePoint destination exceeded a sync safety limit.");
-      }
-      if (visited.has(item.id)) throw new Error("A SharePoint folder cycle was detected.");
-      visited.add(item.id);
-      queue.push({ folder: item, path, depth: current.depth + 1 });
-    }
-  }
-  return { root, records };
-}
-
 function destinationPathIndex(records: DestinationRecord[]): Map<string, DestinationRecord> {
   const index = new Map<string, DestinationRecord>();
   for (const record of records) index.set(pathKey(record.path), record);
@@ -243,6 +215,7 @@ async function saveRunState(
     summary: SyncRunSummary | null;
     conflicts: SyncConflict[];
     error: string | null;
+    retryAt?: Date;
   },
 ): Promise<void> {
   await db.update(syncConfigTable).set({
@@ -251,10 +224,12 @@ async function saveRunState(
     lastRunSummary: values.summary,
     lastRunConflicts: values.conflicts,
     lastRunError: values.error,
+    nextRunAt: sql`greatest(now() + ${syncConfigTable.pollIntervalSeconds} * interval '1 second', ${values.retryAt ?? new Date(0)}::timestamptz)`,
+    providerRetryAt: values.retryAt ?? null,
   }).where(eq(syncConfigTable.id, 1));
 }
 
-async function performSync(
+export async function performSync(
   db: typeof import("@workspace/db")["db"],
   client: ShufflrrClient,
   config: {
@@ -263,12 +238,13 @@ async function performSync(
     sourceFolders: SyncSourceFolder[];
   },
   onPhase: (phase: SyncPhase) => void,
+  providers = { loadDestinationSnapshot, createSyncFolder, updateSyncItem, uploadSyncFile, deleteSyncItem },
 ): Promise<{ summary: SyncRunSummary; conflicts: SyncConflict[] }> {
   onPhase("source_listing");
   const sourceRecords = await loadSourceTree(client, config.sourceFolders);
   const sourceRootIds = config.sourceFolders.map(folder => String(folder.id));
   onPhase("destination_listing");
-  const { root: destinationRoot, records: initialDestinations } = await loadDestinationTree(config.destinationFolderId);
+  const { root: destinationRoot, records: initialDestinations, driveId } = await providers.loadDestinationSnapshot(db, config.destinationFolderId);
   const destinationById = new Map(initialDestinations.map(item => [item.id, item]));
   const destinationByPath = destinationPathIndex(initialDestinations);
   onPhase("reconciliation");
@@ -308,7 +284,10 @@ async function performSync(
     liveSourceKeys.add(key);
     const mapping = mappingBySource.get(key);
     if (mapping) mappedDestinationIds.add(mapping.destinationId);
-    if (record.parentSourceId && blockedSourceFolders.has(`${rootId}:${record.parentSourceId}`)) continue;
+    if (record.parentSourceId && blockedSourceFolders.has(`${rootId}:${record.parentSourceId}`)) {
+      if (record.entry.isFolder) blockedSourceFolders.add(`${rootId}:${itemId}`);
+      continue;
+    }
 
     const parentDestinationId = record.parentSourceId
       ? mappingBySource.get(sourceKey(rootId, record.parentSourceId, true))?.destinationId
@@ -316,6 +295,8 @@ async function performSync(
     if (!parentDestinationId) throw new Error("A selected destination folder could not be resolved.");
 
     let destinationItem = mapping ? destinationById.get(mapping.destinationId) : undefined;
+    const originalDestination = destinationItem;
+    const hadDestination = !!destinationItem;
     const existingAtPath = destinationByPath.get(pathKey(record.path));
 
     if (!mapping && existingAtPath) {
@@ -334,7 +315,7 @@ async function performSync(
       const needsMove = destinationItem.parentId !== parentDestinationId || destinationItem.name !== record.entry.name;
       if (needsMove) {
         try {
-          const moved = await updateSyncItem(destinationItem.id, {
+          const moved = await providers.updateSyncItem(destinationItem.id, {
             name: record.entry.name,
             parentId: parentDestinationId,
           });
@@ -361,7 +342,7 @@ async function performSync(
       if (record.entry.isFolder) {
         try {
           destinationItem = {
-            ...await createSyncFolder(parentDestinationId, record.entry.name),
+            ...await providers.createSyncFolder(parentDestinationId, record.entry.name),
             path: record.path,
           };
           summary.createdFolders += 1;
@@ -388,7 +369,7 @@ async function performSync(
         if (bytes.byteLength > MAX_FILE_BYTES) throw new Error("A Shufflrr file exceeds the 100 MiB sync limit.");
         try {
           destinationItem = {
-            ...await uploadSyncFile(parentDestinationId, record.entry.name, bytes),
+            ...await providers.uploadSyncFile(parentDestinationId, record.entry.name, bytes),
             path: record.path,
           };
           summary.copiedFiles += 1;
@@ -400,7 +381,8 @@ async function performSync(
           throw error;
         }
       }
-    } else if (!record.entry.isFolder) {
+    }
+    if (mapping && hadDestination && destinationItem && !record.entry.isFolder) {
       const destinationChanged = !!mapping?.destinationCTag && !!destinationItem.cTag &&
         mapping.destinationCTag !== destinationItem.cTag;
       const sourceChanged = mapping?.sourceModifiedAt !== (record.entry.modifiedAt ?? null) ||
@@ -419,7 +401,7 @@ async function performSync(
         const bytes = new Uint8Array(await upstream.arrayBuffer());
         if (bytes.byteLength > MAX_FILE_BYTES) throw new Error("A Shufflrr file exceeds the 100 MiB sync limit.");
         destinationItem = {
-          ...await uploadSyncFile(parentDestinationId, record.entry.name, bytes, destinationItem.id),
+          ...await providers.uploadSyncFile(parentDestinationId, record.entry.name, bytes, destinationItem.id),
           path: record.path,
         };
         summary.updatedFiles += 1;
@@ -427,12 +409,26 @@ async function performSync(
     }
 
     if (!destinationItem) throw new Error("A SharePoint item could not be created or resolved.");
+    // Reflect successful local writes immediately, even if Graph's delta feed has not caught up yet.
+    if (destinationItem !== originalDestination) {
+      await db.insert(syncSharepointItemsTable).values({
+        driveId, itemId: destinationItem.id, item: destinationItem,
+      }).onConflictDoUpdate({
+        target: [syncSharepointItemsTable.driveId, syncSharepointItemsTable.itemId],
+        set: { item: destinationItem },
+      });
+    }
     mappedDestinationIds.add(destinationItem.id);
     const previousDestination = destinationById.get(destinationItem.id);
     if (previousDestination) destinationByPath.delete(pathKey(previousDestination.path));
     destinationById.set(destinationItem.id, { ...destinationItem, path: record.path });
     destinationByPath.set(pathKey(record.path), destinationById.get(destinationItem.id)!);
-    await db.insert(syncItemsTable).values({
+    if (mapping && mapping.destinationId === destinationItem.id &&
+      mapping.sourceRootName === record.root.name && mapping.sourceParentId === record.parentSourceId &&
+      mapping.destinationRootName === config.destinationFolderName && mapping.relativePath === record.path &&
+      mapping.name === record.entry.name && mapping.sourceModifiedAt === (record.entry.modifiedAt ?? null) &&
+      mapping.sourceSize === (record.entry.size ?? 0) && mapping.destinationCTag === (destinationItem.cTag ?? null)) continue;
+    const [savedMapping] = await db.insert(syncItemsTable).values({
       sourceRootId: rootId,
       sourceRootName: record.root.name,
       sourceId: itemId,
@@ -465,7 +461,8 @@ async function performSync(
         destinationCTag: destinationItem.cTag ?? null,
         updatedAt: new Date(),
       },
-    });
+    }).returning();
+    mappingBySource.set(key, savedMapping);
   }
 
   const staleMappings = existingMappings.filter(mapping =>
@@ -508,7 +505,7 @@ async function performSync(
     }
 
     if (destinationById.has(mapping.destinationId)) {
-      await deleteSyncItem(mapping.destinationId);
+      await providers.deleteSyncItem(mapping.destinationId);
       summary.deletedItems += 1;
       const destinationPath = destinationById.get(mapping.destinationId)?.path;
       for (const [id, item] of destinationById) {
@@ -518,6 +515,12 @@ async function performSync(
         }
       }
     }
+  }
+  if (deletedDestinationIds.size) {
+    await db.delete(syncSharepointItemsTable).where(and(
+      eq(syncSharepointItemsTable.driveId, driveId),
+      inArray(syncSharepointItemsTable.itemId, [...deletedDestinationIds]),
+    ));
   }
   destinationByPath.clear();
   for (const [path, item] of rebuildDestinationPathIndex(destinationById)) destinationByPath.set(path, item);
@@ -565,6 +568,7 @@ export async function runScheduledSync(): Promise<SyncResult> {
   let client: ShufflrrClient | undefined;
   const runId = randomUUID();
   let phase: SyncPhase = "configuration";
+  let intervalSeconds = 60;
   try {
     const lock = await lockConnection.query<{ locked: boolean }>(
       "SELECT pg_try_advisory_lock($1) AS locked",
@@ -574,7 +578,11 @@ export async function runScheduledSync(): Promise<SyncResult> {
     if (!locked) return { skipped: true };
 
     const [config] = await db.select().from(syncConfigTable).where(eq(syncConfigTable.id, 1)).limit(1);
-    if (!config?.enabled) return { skipped: true };
+    if (!config?.enabled) return { skipped: true, nextCheckMs: 5000 };
+    intervalSeconds = config.pollIntervalSeconds;
+    if (config.nextRunAt && config.nextRunAt.getTime() > Date.now()) {
+      return { skipped: true, nextCheckMs: Math.min(5000, config.nextRunAt.getTime() - Date.now()) };
+    }
     if (!config.destinationFolderId || !config.destinationFolderName || !config.sourceFolders.length) {
       throw new Error("The shared sync configuration is incomplete.");
     }
@@ -602,7 +610,7 @@ export async function runScheduledSync(): Promise<SyncResult> {
       conflicts: outcome.conflicts,
       error: null,
     });
-    return { skipped: false, status, summary: outcome.summary };
+    return { skipped: false, status, summary: outcome.summary, nextCheckMs: Math.min(5000, intervalSeconds * 1000) };
   } catch (error) {
     const message = safeError(error);
     const cause = error instanceof Error ? error.cause : undefined;
@@ -613,6 +621,8 @@ export async function runScheduledSync(): Promise<SyncResult> {
       code: diagnosticCode(error),
       causeCode: diagnosticCode(cause),
       status: error instanceof AccessError ? error.status : undefined,
+      provider: error instanceof ProviderBackoffError ? error.provider : undefined,
+      retryAt: retryDate(error),
       reason: message,
     }, "Sync run failed.");
     await saveRunState(db, {
@@ -620,6 +630,7 @@ export async function runScheduledSync(): Promise<SyncResult> {
       summary: null,
       conflicts: [],
       error: `${message} Reference: ${runId}`,
+      retryAt: retryDate(error),
     }).catch(() => {});
     throw error;
   } finally {

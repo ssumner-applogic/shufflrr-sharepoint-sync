@@ -5,9 +5,11 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { SyncConfigInputPollIntervalSeconds } from './syncConfigInputPollIntervalSeconds';
 import type { SyncSourceFolder } from './syncSourceFolder';
 
 export interface SyncConfigInput {
+  pollIntervalSeconds?: SyncConfigInputPollIntervalSeconds;
   /**
      * @minLength 1
      * @maxLength 500

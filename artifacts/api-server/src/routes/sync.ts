@@ -6,6 +6,7 @@ import {
   GetSyncConfigResponse,
   SaveSyncConfigBody,
   SetSyncEnabledBody,
+  SetSyncIntervalBody,
   type SyncConfigInput,
 } from "@workspace/api-zod";
 import {
@@ -18,6 +19,7 @@ import { ShufflrrError } from "@workspace/shufflrr";
 import { newShufflrrClient, shufflrrConfig } from "../lib/shufflrr";
 import { AccessError, getSyncDriveItem } from "../lib/sharepoint";
 import { SYNC_LOCK_ID } from "../lib/sync-runner";
+import { ProviderBackoffError } from "@workspace/shufflrr/http-policy";
 
 const router: IRouter = Router();
 
@@ -51,6 +53,8 @@ function emptyConfig() {
     destinationFolderName: null,
     sourceFolders: [],
     enabled: false,
+    pollIntervalSeconds: 60,
+    nextRunAt: null,
     lastRunAt: null,
     lastRunStatus: null,
     lastRunSummary: null,
@@ -79,6 +83,8 @@ async function responseConfig() {
     destinationFolderName: config.destinationFolderName,
     sourceFolders: config.sourceFolders,
     enabled: config.enabled,
+    pollIntervalSeconds: config.pollIntervalSeconds,
+    nextRunAt: config.nextRunAt,
     lastRunAt: config.lastRunAt,
     lastRunStatus: config.lastRunStatus,
     lastRunSummary: config.lastRunSummary,
@@ -90,6 +96,11 @@ async function responseConfig() {
 }
 
 function operationError(req: Request, res: Response, error: unknown): void {
+  if (error instanceof ProviderBackoffError || (error instanceof ShufflrrError && error.code === "throttled")) {
+    res.set("Retry-After", String(Math.max(1, Math.ceil(((error.retryAt?.getTime() ?? Date.now() + 1000) - Date.now()) / 1000))));
+    res.status(503).json({ error: "The provider has requested a pause. Try again after its cooldown.", requestId: String(req.id) });
+    return;
+  }
   req.log.error({
     event: "sync_configuration_failure",
     code: error instanceof ShufflrrError || error instanceof AccessError ? error.code : "unexpected",
@@ -156,6 +167,7 @@ router.put("/sync/config", async (req, res): Promise<void> => {
       destinationFolderId: destinationId,
       destinationFolderName: destination.name || "Shared Documents",
       sourceFolders,
+      pollIntervalSeconds: parsed.data.pollIntervalSeconds ?? 60,
     };
     await db.transaction(async tx => {
       const lockResult = await tx.execute(sql`SELECT pg_try_advisory_xact_lock(${SYNC_LOCK_ID}) AS locked`);
@@ -208,6 +220,7 @@ router.put("/sync/config", async (req, res): Promise<void> => {
         id: 1,
         ...input,
         enabled: false,
+        nextRunAt: null,
         lastRunAt: null,
         lastRunStatus: null,
         lastRunSummary: null,
@@ -218,6 +231,7 @@ router.put("/sync/config", async (req, res): Promise<void> => {
         set: {
           ...input,
           enabled: false,
+          nextRunAt: sql`${syncConfigTable.providerRetryAt}`,
           updatedAt: new Date(),
           lastRunAt: null,
           lastRunStatus: null,
@@ -227,6 +241,30 @@ router.put("/sync/config", async (req, res): Promise<void> => {
         },
       });
     });
+    res.json(await responseConfig());
+  } catch (error) {
+    operationError(req, res, error);
+  }
+});
+
+router.put("/sync/interval", async (req, res): Promise<void> => {
+  const parsed = SetSyncIntervalBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Choose a supported polling interval.", requestId: String(req.id) });
+    return;
+  }
+  try {
+    const { db } = await import("@workspace/db");
+    await db.insert(syncConfigTable).values({ id: 1, pollIntervalSeconds: parsed.data.pollIntervalSeconds })
+      .onConflictDoUpdate({
+        target: syncConfigTable.id,
+        // Preserve a provider cooldown, even when a user chooses a shorter interval.
+        set: {
+          pollIntervalSeconds: parsed.data.pollIntervalSeconds,
+          nextRunAt: sql`greatest(now(), coalesce(${syncConfigTable.lastRunAt}, now()) + ${parsed.data.pollIntervalSeconds} * interval '1 second', coalesce(${syncConfigTable.providerRetryAt}, now()))`,
+          updatedAt: new Date(),
+        },
+      });
     res.json(await responseConfig());
   } catch (error) {
     operationError(req, res, error);
@@ -251,7 +289,11 @@ router.put("/sync/enabled", async (req, res): Promise<void> => {
         throw new AccessError("SyncNotConfigured", "Save a SharePoint destination and Shufflrr folders before enabling sync.", 400);
       }
       await tx.insert(syncConfigTable).values({ id: 1, enabled: parsed.data.enabled })
-        .onConflictDoUpdate({ target: syncConfigTable.id, set: { enabled: parsed.data.enabled, updatedAt: new Date() } });
+        .onConflictDoUpdate({ target: syncConfigTable.id, set: {
+          enabled: parsed.data.enabled,
+          nextRunAt: sql`${syncConfigTable.providerRetryAt}`,
+          updatedAt: new Date(),
+        } });
     });
     res.json(await responseConfig());
   } catch (error) {

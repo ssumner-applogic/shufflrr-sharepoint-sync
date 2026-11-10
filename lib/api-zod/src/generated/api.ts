@@ -35,6 +35,8 @@ export const GetSyncConfigResponse = zod.object({
   "name": zod.string().min(1).max(getSyncConfigResponseSourceFoldersItemNameMax)
 })),
   "enabled": zod.boolean(),
+  "pollIntervalSeconds": zod.union([zod.literal(1),zod.literal(5),zod.literal(30),zod.literal(60),zod.literal(300),zod.literal(3600)]),
+  "nextRunAt": zod.coerce.date().nullable(),
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
@@ -61,6 +63,7 @@ export const GetSyncConfigResponse = zod.object({
 /**
  * @summary Save the shared sync folders while sync is disabled
  */
+export const saveSyncConfigBodyPollIntervalSecondsDefault = 60;
 export const saveSyncConfigBodyDestinationFolderIdMax = 500;
 
 export const saveSyncConfigBodyDestinationFolderNameMax = 255;
@@ -73,6 +76,7 @@ export const saveSyncConfigBodySourceFoldersMax = 100;
 
 
 export const SaveSyncConfigBody = zod.object({
+  "pollIntervalSeconds": zod.union([zod.literal(1),zod.literal(5),zod.literal(30),zod.literal(60),zod.literal(300),zod.literal(3600)]).default(saveSyncConfigBodyPollIntervalSecondsDefault),
   "destinationFolderId": zod.string().min(1).max(saveSyncConfigBodyDestinationFolderIdMax),
   "destinationFolderName": zod.string().min(1).max(saveSyncConfigBodyDestinationFolderNameMax),
   "sourceFolders": zod.array(zod.object({
@@ -105,6 +109,8 @@ export const SaveSyncConfigResponse = zod.object({
   "name": zod.string().min(1).max(saveSyncConfigResponseSourceFoldersItemNameMax)
 })),
   "enabled": zod.boolean(),
+  "pollIntervalSeconds": zod.union([zod.literal(1),zod.literal(5),zod.literal(30),zod.literal(60),zod.literal(300),zod.literal(3600)]),
+  "nextRunAt": zod.coerce.date().nullable(),
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
@@ -113,6 +119,62 @@ export const SaveSyncConfigResponse = zod.object({
   "updatedFiles": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneUpdatedFilesMin),
   "deletedItems": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneDeletedItemsMin),
   "conflicts": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneConflictsMin)
+}),zod.null()]),
+  "lastRunConflicts": zod.array(zod.object({
+  "path": zod.string(),
+  "kind": zod.enum(['path-conflict', 'untracked-sharepoint-item'])
+})),
+  "lastRunError": zod.string().nullable(),
+  "detachedPairs": zod.array(zod.object({
+  "id": zod.number().int(),
+  "sourceRootName": zod.string(),
+  "destinationFolderName": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Set the shared Shufflrr polling interval without changing folders
+ */
+export const SetSyncIntervalBody = zod.object({
+  "pollIntervalSeconds": zod.union([zod.literal(1),zod.literal(5),zod.literal(30),zod.literal(60),zod.literal(300),zod.literal(3600)])
+})
+
+
+export const setSyncIntervalResponseSourceFoldersItemNameMax = 255;
+
+export const setSyncIntervalResponseLastRunSummaryOneCreatedFoldersMin = 0;
+
+export const setSyncIntervalResponseLastRunSummaryOneCopiedFilesMin = 0;
+
+export const setSyncIntervalResponseLastRunSummaryOneUpdatedFilesMin = 0;
+
+export const setSyncIntervalResponseLastRunSummaryOneDeletedItemsMin = 0;
+
+export const setSyncIntervalResponseLastRunSummaryOneConflictsMin = 0;
+
+
+
+export const SetSyncIntervalResponse = zod.object({
+  "configured": zod.boolean(),
+  "destinationFolderId": zod.string().nullable(),
+  "destinationFolderName": zod.string().nullable(),
+  "sourceFolders": zod.array(zod.object({
+  "id": zod.number().int().min(1),
+  "name": zod.string().min(1).max(setSyncIntervalResponseSourceFoldersItemNameMax)
+})),
+  "enabled": zod.boolean(),
+  "pollIntervalSeconds": zod.union([zod.literal(1),zod.literal(5),zod.literal(30),zod.literal(60),zod.literal(300),zod.literal(3600)]),
+  "nextRunAt": zod.coerce.date().nullable(),
+  "lastRunAt": zod.coerce.date().nullable(),
+  "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
+  "lastRunSummary": zod.union([zod.object({
+  "createdFolders": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneCreatedFoldersMin),
+  "copiedFiles": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneCopiedFilesMin),
+  "updatedFiles": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneUpdatedFilesMin),
+  "deletedItems": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneDeletedItemsMin),
+  "conflicts": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneConflictsMin)
 }),zod.null()]),
   "lastRunConflicts": zod.array(zod.object({
   "path": zod.string(),
@@ -159,6 +221,8 @@ export const SetSyncEnabledResponse = zod.object({
   "name": zod.string().min(1).max(setSyncEnabledResponseSourceFoldersItemNameMax)
 })),
   "enabled": zod.boolean(),
+  "pollIntervalSeconds": zod.union([zod.literal(1),zod.literal(5),zod.literal(30),zod.literal(60),zod.literal(300),zod.literal(3600)]),
+  "nextRunAt": zod.coerce.date().nullable(),
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({

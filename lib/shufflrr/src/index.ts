@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { CookieJar } from "tough-cookie";
+import { ProviderBackoffError, ProviderGate, requestSpacing } from "./http-policy";
+
+const requestGate = new ProviderGate("Shufflrr", requestSpacing(process.env.SHUFFLRR_REQUEST_INTERVAL_MS));
 
 export class ShufflrrError extends Error {
   constructor(
-    public readonly code: "configuration" | "authentication" | "permission" | "http" | "network" | "schema" | "limit",
+    public readonly code: "configuration" | "authentication" | "permission" | "http" | "network" | "schema" | "limit" | "throttled",
     message: string,
+    public readonly retryAt?: Date,
   ) {
     super(message);
     this.name = "ShufflrrError";
@@ -99,7 +103,7 @@ export class ShufflrrClient {
       try {
         const cookie = await this.jar.getCookieString(url);
         const multipart = body instanceof FormData;
-        const response = await this.transport(url, {
+        const response = await requestGate.request(() => this.transport(url, {
           method, redirect: "manual", signal: AbortSignal.timeout(this.options.timeoutMs),
           headers: {
             Accept: "application/json",
@@ -108,16 +112,9 @@ export class ShufflrrClient {
             ...(body === undefined || multipart ? {} : { "Content-Type": "application/json" }),
           },
           ...(body === undefined ? {} : { body: multipart ? body : JSON.stringify(body) }),
-        });
+        }), method, path !== "/account/login");
         status = response.status;
         for (const header of response.headers.getSetCookie()) await this.jar.setCookie(header, url);
-        if (method === "GET" && [429, 502, 503, 504].includes(status) && attempt < 2) {
-          await response.body?.cancel();
-          const retryAfter = Number(response.headers.get("retry-after"));
-          await new Promise(resolve => setTimeout(resolve,
-            Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 3000) : 250 * 2 ** attempt));
-          continue;
-        }
         if (!response.ok) {
           await response.body?.cancel();
           if (status === 401) throw new ShufflrrError("authentication", "Authentication was rejected or the session expired.");
@@ -128,6 +125,9 @@ export class ShufflrrClient {
         }
         return response;
       } catch (error) {
+        if (error instanceof ProviderBackoffError) {
+          throw new ShufflrrError("throttled", "Shufflrr requested a cooldown. Try again after the required delay.", error.retryAt);
+        }
         if (error instanceof ShufflrrError) throw error;
         throw new ShufflrrError("network", "Request failed or timed out. Check connectivity, TLS, and the configured portal URL.");
       } finally {

@@ -53,6 +53,18 @@ export interface SyncDetachedPair {
   createdAt: string;
 }
 
+export type SyncConfigPollIntervalSeconds = typeof SyncConfigPollIntervalSeconds[keyof typeof SyncConfigPollIntervalSeconds];
+
+
+export const SyncConfigPollIntervalSeconds = {
+  NUMBER_1: 1,
+  NUMBER_5: 5,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+  NUMBER_300: 300,
+  NUMBER_3600: 3600,
+} as const;
+
 /**
  * @nullable
  */
@@ -74,6 +86,9 @@ export interface SyncConfig {
   destinationFolderName: string | null;
   sourceFolders: SyncSourceFolder[];
   enabled: boolean;
+  pollIntervalSeconds: SyncConfigPollIntervalSeconds;
+  /** @nullable */
+  nextRunAt: string | null;
   /** @nullable */
   lastRunAt: string | null;
   /** @nullable */
@@ -85,7 +100,20 @@ export interface SyncConfig {
   detachedPairs: SyncDetachedPair[];
 }
 
+export type SyncConfigInputPollIntervalSeconds = typeof SyncConfigInputPollIntervalSeconds[keyof typeof SyncConfigInputPollIntervalSeconds];
+
+
+export const SyncConfigInputPollIntervalSeconds = {
+  NUMBER_1: 1,
+  NUMBER_5: 5,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+  NUMBER_300: 300,
+  NUMBER_3600: 3600,
+} as const;
+
 export interface SyncConfigInput {
+  pollIntervalSeconds?: SyncConfigInputPollIntervalSeconds;
   /**
      * @minLength 1
      * @maxLength 500
@@ -101,6 +129,22 @@ export interface SyncConfigInput {
      * @maxItems 100
      */
   sourceFolders: SyncSourceFolder[];
+}
+
+export type SyncPollingInputPollIntervalSeconds = typeof SyncPollingInputPollIntervalSeconds[keyof typeof SyncPollingInputPollIntervalSeconds];
+
+
+export const SyncPollingInputPollIntervalSeconds = {
+  NUMBER_1: 1,
+  NUMBER_5: 5,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+  NUMBER_300: 300,
+  NUMBER_3600: 3600,
+} as const;
+
+export interface SyncPollingInput {
+  pollIntervalSeconds: SyncPollingInputPollIntervalSeconds;
 }
 
 export interface SyncEnabledInput {

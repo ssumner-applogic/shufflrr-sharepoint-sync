@@ -35,6 +35,9 @@ export const syncConfigTable = pgTable("sync_config", {
   destinationFolderName: text("destination_folder_name"),
   sourceFolders: jsonb("source_folders").$type<SyncSourceFolder[]>().notNull().default(sql`'[]'::jsonb`),
   enabled: boolean("enabled").notNull().default(false),
+  pollIntervalSeconds: integer("poll_interval_seconds").notNull().default(60),
+  nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+  providerRetryAt: timestamp("provider_retry_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   lastRunAt: timestamp("last_run_at", { withTimezone: true }),
   lastRunStatus: text("last_run_status"),
@@ -81,3 +84,20 @@ export const syncOrphanNoticesTable = pgTable("sync_orphan_notices", {
 export type SyncConfig = typeof syncConfigTable.$inferSelect;
 export type SyncItem = typeof syncItemsTable.$inferSelect;
 export type SyncOrphanNotice = typeof syncOrphanNoticesTable.$inferSelect;
+
+// Delta links are server-only continuation credentials; never serialize these through an API.
+export const syncSharepointStateTable = pgTable("sync_sharepoint_state", {
+  driveId: text("drive_id").primaryKey(),
+  deltaLink: text("delta_link").notNull(),
+});
+
+export const syncSharepointItemsTable = pgTable("sync_sharepoint_items", {
+  driveId: text("drive_id").notNull(),
+  itemId: text("item_id").notNull(),
+  item: jsonb("item").$type<{
+    id: string; name: string; isFolder: boolean; size: number;
+    modifiedAt: string; parentId?: string; cTag?: string;
+  }>().notNull(),
+}, table => [
+  uniqueIndex("sync_sharepoint_snapshot_unique").on(table.driveId, table.itemId),
+]);

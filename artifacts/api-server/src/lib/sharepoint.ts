@@ -1,4 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { ProviderGate, requestSpacing } from "@workspace/shufflrr/http-policy";
 import type { AccessReport, FolderListing } from "@workspace/api-zod";
 
 export const libraryUrl = "https://sandvine.sharepoint.com/sites/ApplogicKnowledgeBase/Shared%20Documents";
@@ -76,6 +77,8 @@ async function token() {
   return tokenCache;
 }
 
+const graphGate = new ProviderGate("SharePoint", requestSpacing(process.env.SHAREPOINT_REQUEST_INTERVAL_MS));
+
 async function graph<T = GraphPage>(path: string, init: RequestInit = {}): Promise<T> {
   const auth = await token();
   const url = path.startsWith("https:") ? new URL(path) : new URL(graphRoot + path);
@@ -84,12 +87,12 @@ async function graph<T = GraphPage>(path: string, init: RequestInit = {}): Promi
   }
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${auth.value}`);
-  const res = await fetch(url, {
+  const res = await graphGate.request(() => fetch(url, {
     ...init,
     headers,
     signal: init.signal ?? AbortSignal.timeout(20000),
     redirect: "error",
-  });
+  }), init.method ?? "GET");
   const data = res.status === 204 ? undefined : await res.json() as T & { error?: { code?: string } };
   if (!res.ok) {
     if (res.status === 401) tokenCache = undefined;
@@ -345,6 +348,54 @@ export async function listSyncFolder(folderId: string): Promise<SyncDriveItem[]>
     next = page["@odata.nextLink"];
   }
   return result;
+}
+
+export async function syncDriveId(): Promise<string> {
+  return (await location()).driveId;
+}
+
+export interface SyncDeltaChange {
+  id: string;
+  deleted: boolean;
+  item?: SyncDriveItem;
+}
+
+export async function getSyncDeltaPage(driveId: string, cursor?: string): Promise<{
+  changes: SyncDeltaChange[];
+  nextLink?: string;
+  deltaLink?: string;
+}> {
+  const prefix = `/drives/${encodeURIComponent(driveId)}/`;
+  const validateLink = (value: string): string => {
+    const url = new URL(value, graphRoot + "/");
+    if (url.origin !== "https://graph.microsoft.com" ||
+      !url.pathname.startsWith(`/v1.0${prefix}`) || !url.pathname.includes("/delta")) {
+      throw new AccessError("InvalidDeltaCursor", "Invalid SharePoint change-tracking cursor.", 502);
+    }
+    return url.href;
+  };
+  const path = cursor ? validateLink(cursor) :
+    `${prefix}root/delta?$select=id,name,folder,size,lastModifiedDateTime,parentReference,cTag,deleted&$top=200`;
+  const page = await graph<{
+    value: (Partial<GraphItem> & { id: string; deleted?: unknown })[];
+    "@odata.nextLink"?: string;
+    "@odata.deltaLink"?: string;
+  }>(path);
+  if (!Array.isArray(page.value)) throw new AccessError("GraphSchema", "Invalid SharePoint change response.");
+  const changes = page.value.map(entry => {
+    if (typeof entry.id !== "string" || !entry.id) throw new AccessError("GraphSchema", "Invalid SharePoint change item.");
+    if (entry.deleted) return { id: entry.id, deleted: true };
+    if (typeof entry.name !== "string" || !entry.name ||
+      (entry.size != null && (!Number.isSafeInteger(entry.size) || entry.size < 0))) {
+      throw new AccessError("GraphSchema", "Incomplete SharePoint change item.");
+    }
+    return { id: entry.id, deleted: false, item: syncDriveItem(entry as GraphItem) };
+  });
+  return {
+    changes,
+    ...(page["@odata.nextLink"] ? { nextLink: validateLink(page["@odata.nextLink"]) } : {}),
+    ...(page["@odata.deltaLink"] ? { deltaLink: validateLink(page["@odata.deltaLink"]) } : {}),
+  };
 }
 
 export async function createSyncFolder(parentId: string, name: string): Promise<SyncDriveItem> {

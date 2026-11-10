@@ -33,7 +33,11 @@ The production API serves the compiled SharePoint viewer and `/api` routes from 
 
 Before enabling sync, the Microsoft application must have `Sites.Selected` access with the `write` role granted to the target SharePoint site. The prior access test showed that folder creation was denied, so verify write access succeeds before starting sync; the app cannot grant itself SharePoint permissions. That site grant is required for folder/file create, update, move, and delete operations.
 
-The SharePoint viewer and all SharePoint API routes require a valid Clerk session. `/healthz` remains public for platform health checks; `/api/auth/config` returns only the Clerk publishable key. Configure the deployed domain and email/password sign-in in Clerk. Any signed-in user can change the shared sync configuration. The worker polls once per minute, does not use a browser session, and exits cleanly on shutdown. A PostgreSQL advisory lock prevents overlapping runs across worker instances.
+The SharePoint viewer and all SharePoint API routes require a valid Clerk session. `/healthz` remains public for platform health checks; `/api/auth/config` returns only the Clerk publishable key. Configure the deployed domain and email/password sign-in in Clerk. Any signed-in user can change the shared sync configuration. The worker uses the persisted polling interval (1, 5, 30, 60, 300, or 3600 seconds; default 60), does not use a browser session, and exits cleanly on shutdown. A PostgreSQL advisory lock prevents overlapping runs across worker instances.
+
+Before releasing this version, apply `0002_sync_polling_delta` with `pnpm db:migrate` in the release environment, then deploy the API and worker together. This additive migration introduces interval/due-time/cooldown fields and the persistent SharePoint delta snapshot; it does not reset existing settings or mappings. Delta URLs remain server-only and must not appear in logs or API responses.
+
+Optional pacing variables `SHUFFLRR_REQUEST_INTERVAL_MS` and `SHAREPOINT_REQUEST_INTERVAL_MS` default to 250 milliseconds and accept 50–60000. Set these independently on API and worker services if needed. Pacing is per process, not a distributed tenant-wide quota; other applications and instances contribute to the providers' limits. Provider cooldowns override the configured polling interval and survive worker restarts. The worker checks for changed configuration at most every five seconds while waiting; after a run the selected minimum interval applies.
 
 ### Sync troubleshooting
 
@@ -41,7 +45,7 @@ Restart the API and worker after changing their database connection so existing 
 
 Failed runs show a safe reason and a reference ID. Find the matching `sync_run_failed` log event by its `requestId`; it records the sync phase and safe provider/database error codes without logging folder paths, file contents, connection strings, or raw database errors. The original failure cannot be reconstructed from older logs that only recorded `development_sync_run_failed`.
 
-Railway Cron Jobs run no more often than every five minutes, so they cannot provide the selected one-minute polling interval. Use the always-on worker service above; it consumes worker resources while running. The worker does nothing when sync is paused.
+Use the always-on worker service above for sub-minute polling; it consumes worker resources while running. When sync is paused it checks shared database configuration but makes no provider sync requests.
 
 Only content mapped by this app inside the currently configured SharePoint destination is updated or deleted. Initial conflicts and untracked SharePoint items are reported and left unchanged. Changing the sync scope retains old copies and creates dismissible notices; users must delete those copies manually if they no longer want them. Source files above 100 MiB are not supported.
 
