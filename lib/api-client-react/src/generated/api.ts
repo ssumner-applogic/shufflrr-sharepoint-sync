@@ -28,10 +28,14 @@ import type {
   AccessReport,
   ConnectionStatus,
   FolderListing,
+  GetSyncFailures200,
+  GetSyncFailuresParams,
+  GetSyncRunEventsParams,
   HealthStatus,
   LibraryItem,
   ListItemsParams,
   ListShufflrrItemsParams,
+  RetrySyncFile202,
   SharePointCreateFolderInput,
   SharePointUpdateItemInput,
   ShufflrrAccessReport,
@@ -41,7 +45,9 @@ import type {
   SyncConfig,
   SyncConfigInput,
   SyncEnabledInput,
-  SyncPollingInput
+  SyncEventPage,
+  SyncPollingInput,
+  SyncRun
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -70,6 +76,215 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetSyncRunsUrl = () => {
+
+
+
+
+  return `/api/sync/runs`
+}
+
+/**
+ * @summary Read the most recent fifty sync runs
+ */
+export const getSyncRuns = async ( options?: Parameters<typeof customFetch>[1]): Promise<SyncRun[]> => {
+
+  return customFetch<SyncRun[]>(getGetSyncRunsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSyncRunsQueryKey = () => {
+    return [
+    `/api/sync/runs`
+    ] as const;
+    }
+
+
+export const getGetSyncRunsQueryOptions = <TData = Awaited<ReturnType<typeof getSyncRuns>>, TError = ErrorType<ShufflrrErrorResponse>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncRuns>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSyncRunsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSyncRuns>>> = ({ signal }) => getSyncRuns({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSyncRuns>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetSyncRunsQueryResult = NonNullable<Awaited<ReturnType<typeof getSyncRuns>>>
+export type GetSyncRunsQueryError = ErrorType<ShufflrrErrorResponse>
+
+
+export function useGetSyncRuns<TData = Awaited<ReturnType<typeof getSyncRuns>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncRuns>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncRuns>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncRuns>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncRuns<TData = Awaited<ReturnType<typeof getSyncRuns>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncRuns>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncRuns>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncRuns>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncRuns<TData = Awaited<ReturnType<typeof getSyncRuns>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncRuns>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Read the most recent fifty sync runs
+ */
+
+export function useGetSyncRuns<TData = Awaited<ReturnType<typeof getSyncRuns>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncRuns>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetSyncRunsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetSyncRunEventsUrl = (params: GetSyncRunEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/sync/events?${stringifiedParams}` : `/api/sync/events`
+}
+
+/**
+ * @summary Read paginated per-item outcomes for a sync run
+ */
+export const getSyncRunEvents = async (params: GetSyncRunEventsParams, options?: Parameters<typeof customFetch>[1]): Promise<SyncEventPage> => {
+
+  return customFetch<SyncEventPage>(getGetSyncRunEventsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSyncRunEventsQueryKey = (params?: GetSyncRunEventsParams,) => {
+    return [
+    `/api/sync/events`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetSyncRunEventsQueryOptions = <TData = Awaited<ReturnType<typeof getSyncRunEvents>>, TError = ErrorType<ShufflrrErrorResponse>>(params: GetSyncRunEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncRunEvents>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSyncRunEventsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSyncRunEvents>>> = ({ signal }) => getSyncRunEvents(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSyncRunEvents>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetSyncRunEventsQueryResult = NonNullable<Awaited<ReturnType<typeof getSyncRunEvents>>>
+export type GetSyncRunEventsQueryError = ErrorType<ShufflrrErrorResponse>
+
+
+export function useGetSyncRunEvents<TData = Awaited<ReturnType<typeof getSyncRunEvents>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: GetSyncRunEventsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncRunEvents>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncRunEvents>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncRunEvents>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncRunEvents<TData = Awaited<ReturnType<typeof getSyncRunEvents>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: GetSyncRunEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncRunEvents>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncRunEvents>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncRunEvents>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncRunEvents<TData = Awaited<ReturnType<typeof getSyncRunEvents>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: GetSyncRunEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncRunEvents>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Read paginated per-item outcomes for a sync run
+ */
+
+export function useGetSyncRunEvents<TData = Awaited<ReturnType<typeof getSyncRunEvents>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: GetSyncRunEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncRunEvents>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetSyncRunEventsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetSyncConfigUrl = () => {
 
@@ -258,6 +473,244 @@ export const useSaveSyncConfig = <TError = ErrorType<ShufflrrErrorResponse>,
         TContext
       > => {
       return useMutation(getSaveSyncConfigMutationOptions(options), queryClient);
+    }
+
+export const getGetSyncFailuresUrl = (params?: GetSyncFailuresParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/sync/failures?${stringifiedParams}` : `/api/sync/failures`
+}
+
+export const getSyncFailures = async (params?: GetSyncFailuresParams, options?: Parameters<typeof customFetch>[1]): Promise<GetSyncFailures200> => {
+
+  return customFetch<GetSyncFailures200>(getGetSyncFailuresUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSyncFailuresQueryKey = (params?: GetSyncFailuresParams,) => {
+    return [
+    `/api/sync/failures`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetSyncFailuresQueryOptions = <TData = Awaited<ReturnType<typeof getSyncFailures>>, TError = ErrorType<unknown>>(params?: GetSyncFailuresParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncFailures>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSyncFailuresQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSyncFailures>>> = ({ signal }) => getSyncFailures(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSyncFailures>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetSyncFailuresQueryResult = NonNullable<Awaited<ReturnType<typeof getSyncFailures>>>
+export type GetSyncFailuresQueryError = ErrorType<unknown>
+
+
+export function useGetSyncFailures<TData = Awaited<ReturnType<typeof getSyncFailures>>, TError = ErrorType<unknown>>(
+ params: undefined |  GetSyncFailuresParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncFailures>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncFailures>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncFailures>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncFailures<TData = Awaited<ReturnType<typeof getSyncFailures>>, TError = ErrorType<unknown>>(
+ params?: GetSyncFailuresParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncFailures>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncFailures>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncFailures>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncFailures<TData = Awaited<ReturnType<typeof getSyncFailures>>, TError = ErrorType<unknown>>(
+ params?: GetSyncFailuresParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncFailures>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetSyncFailures<TData = Awaited<ReturnType<typeof getSyncFailures>>, TError = ErrorType<unknown>>(
+ params?: GetSyncFailuresParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncFailures>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetSyncFailuresQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDismissSyncFileFailureUrl = (id: number,) => {
+
+
+
+
+  return `/api/sync/failures/${id}/dismiss`
+}
+
+export const dismissSyncFileFailure = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDismissSyncFileFailureUrl(id),
+  {
+    ...options,
+    method: 'PUT'
+
+
+  }
+);}
+
+
+
+
+
+export const getDismissSyncFileFailureMutationKey = () => ['dismissSyncFileFailure'] as const;
+
+export const getDismissSyncFileFailureMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissSyncFileFailure>>, TError,DismissSyncFileFailureMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof dismissSyncFileFailure>>, TError,DismissSyncFileFailureMutationVariables, TContext> => {
+
+const mutationKey = getDismissSyncFileFailureMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dismissSyncFileFailure>>, DismissSyncFileFailureMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  dismissSyncFileFailure(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DismissSyncFileFailureMutationResult = NonNullable<Awaited<ReturnType<typeof dismissSyncFileFailure>>>
+
+    export type DismissSyncFileFailureMutationError = ErrorType<unknown>
+    export type DismissSyncFileFailureMutationVariables = {id: number}
+
+    export const useDismissSyncFileFailure = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissSyncFileFailure>>, TError,DismissSyncFileFailureMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof dismissSyncFileFailure>>,
+        TError,
+        DismissSyncFileFailureMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDismissSyncFileFailureMutationOptions(options), queryClient);
+    }
+
+export const getRetrySyncFileUrl = (id: number,) => {
+
+
+
+
+  return `/api/sync/failures/${id}/retry`
+}
+
+export const retrySyncFile = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<RetrySyncFile202> => {
+
+  return customFetch<RetrySyncFile202>(getRetrySyncFileUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetrySyncFileMutationKey = () => ['retrySyncFile'] as const;
+
+export const getRetrySyncFileMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retrySyncFile>>, TError,RetrySyncFileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retrySyncFile>>, TError,RetrySyncFileMutationVariables, TContext> => {
+
+const mutationKey = getRetrySyncFileMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retrySyncFile>>, RetrySyncFileMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  retrySyncFile(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetrySyncFileMutationResult = NonNullable<Awaited<ReturnType<typeof retrySyncFile>>>
+
+    export type RetrySyncFileMutationError = ErrorType<unknown>
+    export type RetrySyncFileMutationVariables = {id: number}
+
+    export const useRetrySyncFile = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retrySyncFile>>, TError,RetrySyncFileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof retrySyncFile>>,
+        TError,
+        RetrySyncFileMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRetrySyncFileMutationOptions(options), queryClient);
     }
 
 export const getSetSyncIntervalUrl = () => {

@@ -1,6 +1,10 @@
 import { logger } from "./logger";
 import { runScheduledSync } from "./sync-runner";
 
+export function syncSchedulerDelay(nextCheckMs: number): number {
+  return Math.max(1, Math.min(1000, nextCheckMs));
+}
+
 /** Database due-times are authoritative; this loop only checks when work is due. */
 export function startSyncScheduler() {
   let stopped = false;
@@ -19,7 +23,9 @@ export function startSyncScheduler() {
       logger.warn({ event: "sync_worker_failed" }, "Scheduled sync run did not complete.");
     }
     if (!stopped) {
-      timer = setTimeout(() => { current = tick(); }, Math.max(1, nextCheckMs));
+      // Check the durable enable flag within one second, even during a long polling interval.
+      // These checks touch PostgreSQL only; they do not poll either content provider.
+      timer = setTimeout(() => { current = tick(); }, syncSchedulerDelay(nextCheckMs));
       // This scheduler also runs inside the Preview HTTP server.
       if (process.env.NODE_ENV === "development") timer.unref();
     }

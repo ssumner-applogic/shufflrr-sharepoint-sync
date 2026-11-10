@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   ChevronRight,
-  CircleAlert,
   Folder,
   Loader2,
   RefreshCw,
@@ -24,7 +23,11 @@ import {
   type SyncConfig,
   type SyncConfigInput,
   type SyncSourceFolder,
+  type SyncFolderExclusion,
 } from "@workspace/api-client-react";
+import { SyncActivityLog } from "./SyncActivityLog";
+import { SyncFailureBanners } from "./SyncFailureBanners";
+import { currentExclusionAncestors, folderSelectionState, toggleFolderSelection } from "./folder-selection";
 
 function errorText(error: unknown): string | null {
   if (error instanceof Error) return error.message;
@@ -151,10 +154,11 @@ type ShufflrrBranchProps = {
   expanded: Set<number>;
   toggle: (id: number) => void;
   selected: Map<number, SyncSourceFolder>;
+  excluded: Map<number, SyncFolderExclusion>;
   parentIds: number[];
   parentById: Map<number, number>;
   onParentLoaded: (parent: number, children: number[]) => void;
-  onSelect: (folder: SyncSourceFolder, parentIds: number[]) => void;
+  onSelect: (folder: SyncSourceFolder, parentIds: number[], checked: boolean) => void;
 };
 
 function ShufflrrFolderBranch({
@@ -165,6 +169,7 @@ function ShufflrrFolderBranch({
   expanded,
   toggle,
   selected,
+  excluded,
   parentIds,
   parentById,
   onParentLoaded,
@@ -193,16 +198,7 @@ function ShufflrrFolderBranch({
   return (
     <div>
       {folders.map(folder => {
-        const itemSelected = selected.has(folder.id);
-        const hasSelectedAncestor = parentIds.some(id => selected.has(id));
-        const descendantsSelected = [...selected.keys()].some(id => {
-          let parent = parentById.get(id);
-          while (parent !== undefined) {
-            if (parent === folder.id) return true;
-            parent = parentById.get(parent);
-          }
-          return false;
-        });
+        const selection = folderSelectionState(folder.id, parentIds, selected, excluded, parentById);
         const itemOpen = expanded.has(folder.id);
         return (
           <div key={folder.id}>
@@ -212,7 +208,6 @@ function ShufflrrFolderBranch({
             >
               <button
                 type="button"
-                disabled={disabled}
                 className="grid size-7 shrink-0 place-items-center rounded hover:bg-background"
                 aria-label={`${itemOpen ? "Collapse" : "Expand"} ${folder.name}`}
                 onClick={() => toggle(folder.id)}
@@ -221,14 +216,22 @@ function ShufflrrFolderBranch({
               </button>
               <input
                 type="checkbox"
-                checked={itemSelected}
-                disabled={disabled || hasSelectedAncestor || (!itemSelected && descendantsSelected)}
-                onChange={() => onSelect({ id: folder.id, name: folder.name }, parentIds)}
+                checked={selection.checked}
+                ref={element => { if (element) element.indeterminate = selection.indeterminate; }}
+                aria-checked={selection.indeterminate ? "mixed" : selection.checked}
+                disabled={disabled || selection.excludedByAncestor}
+                onChange={event => onSelect({ id: folder.id, name: folder.name }, parentIds, event.target.checked)}
                 aria-label={`Sync ${folder.name}`}
+                title={selection.excludedByAncestor ? "Excluded by parent. Reinclude the parent folder first."
+                  : selection.explicitlyExcluded ? "Excluded subtree. Check to include it again."
+                  : selection.inherited ? "Included by parent. Uncheck to exclude this folder and its subfolders."
+                  : selection.indeterminate ? "Some subfolders are excluded or selected separately." : "Includes all subfolders."}
                 className="size-4 accent-primary"
               />
               <Folder className="size-4 shrink-0 text-primary" aria-hidden="true" />
               <span className="min-w-0 truncate text-sm">{folder.name}</span>
+              {selection.explicitlyExcluded && <span className="text-xs text-muted-foreground">Excluded</span>}
+              {selection.inherited && <span className="text-xs text-muted-foreground">Included</span>}
             </div>
             {itemOpen && (
               <ShufflrrFolderBranch
@@ -239,6 +242,7 @@ function ShufflrrFolderBranch({
                 expanded={expanded}
                 toggle={toggle}
                 selected={selected}
+                excluded={excluded}
                 parentIds={[...parentIds, folder.id]}
                 parentById={parentById}
                 onParentLoaded={onParentLoaded}
@@ -265,7 +269,26 @@ const pollingOptions = [
 ] as const;
 
 function ConfigStatus({ config }: { config: SyncConfig }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
   const lastRunAt = config.lastRunAt ? new Date(config.lastRunAt) : null;
+  const nextRunAt = config.nextRunAt ? new Date(config.nextRunAt) : null;
+  const running = config.lastRunStatus === "running";
+  const cooldownUntil = config.providerCooldownUntil ? new Date(config.providerCooldownUntil) : null;
+  let state: { label: string; tone: string };
+  if (!config.enabled) state = { label: "Paused", tone: "text-muted-foreground" };
+  else if (running) state = { label: "Running now", tone: "text-sky-700" };
+  else if (cooldownUntil && cooldownUntil.getTime() > now) {
+    state = { label: `Provider cooldown until ${cooldownUntil.toLocaleTimeString()}`, tone: "text-amber-700" };
+  } else if (nextRunAt && nextRunAt.getTime() > now) {
+    state = { label: `Waiting, next check in ${Math.ceil((nextRunAt.getTime() - now) / 1000)}s`, tone: "text-foreground" };
+  } else state = { label: "Due, waiting for worker to start (about 1s)", tone: "text-foreground" };
+  const outcome = config.lastRunStatus && config.lastRunStatus !== "running"
+    ? { success: "completed", partial: "completed with issues", failed: "failed" }[config.lastRunStatus]
+    : null;
   return (
     <div className="rounded-md border bg-card px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -274,14 +297,18 @@ function ConfigStatus({ config }: { config: SyncConfig }) {
           <span className="ml-2 text-xs font-normal text-muted-foreground">
             Checks every {pollingOptions.find(option => option.value === config.pollIntervalSeconds)?.label}
           </span>
+          <span className={`ml-2 inline-flex items-center gap-1 text-xs font-medium ${state.tone}`} data-testid="status-sync-state">
+            {running && <Loader2 className="size-3 animate-spin" aria-hidden="true" />}
+            {state.label}
+          </span>
         </div>
         <span className="text-xs text-muted-foreground" data-testid="sync-last-run">
-          {lastRunAt ? `Last run ${lastRunAt.toLocaleString()}` : "No sync run yet"}
+          {lastRunAt ? `Last run ${lastRunAt.toLocaleString()}${outcome ? ` (${outcome})` : ""}` : "No sync run yet"}
         </span>
       </div>
       {config.lastRunSummary && (
         <div className="mt-2 text-xs text-muted-foreground">
-          {config.lastRunSummary.copiedFiles} copied · {config.lastRunSummary.updatedFiles} updated · {config.lastRunSummary.deletedItems} deleted · {config.lastRunSummary.conflicts} conflicts
+          {config.lastRunSummary.copiedFiles} copied · {config.lastRunSummary.updatedFiles} updated · {config.lastRunSummary.createdFolders} folders created · {config.lastRunSummary.deletedItems} deleted · {config.lastRunSummary.conflicts} conflicts
         </div>
       )}
       {config.lastRunError && (
@@ -298,11 +325,12 @@ export function SyncAgent({ active }: { active: boolean }) {
     queryFn: ({ signal }) => getSyncConfigQuery(signal),
     enabled: active,
     staleTime: 10_000,
-    refetchInterval: query => active ? Math.min(30_000, (query.state.data?.pollIntervalSeconds ?? 60) * 1000) : false,
+    refetchInterval: query => !active ? false : query.state.data?.enabled || query.state.data?.lastRunStatus === "running" ? 1000 : Math.min(30_000, (query.state.data?.pollIntervalSeconds ?? 60) * 1000),
   });
   const config = configQuery.data;
   const [destination, setDestination] = useState<{ id: string; name: string } | null>(null);
   const [selected, setSelected] = useState<Map<number, SyncSourceFolder>>(new Map());
+  const [excluded, setExcluded] = useState<Map<number, SyncFolderExclusion>>(new Map());
   const [parentById, setParentById] = useState<Map<number, number>>(new Map());
   const [expandedSharePoint, setExpandedSharePoint] = useState<Set<string>>(new Set());
   const [expandedShufflrr, setExpandedShufflrr] = useState<Set<number>>(new Set());
@@ -311,6 +339,7 @@ export function SyncAgent({ active }: { active: boolean }) {
     destinationFolderId: config.destinationFolderId,
     destinationFolderName: config.destinationFolderName,
     sourceFolders: config.sourceFolders,
+    excludedFolders: config.excludedFolders,
   } : null);
 
   useEffect(() => {
@@ -319,6 +348,7 @@ export function SyncAgent({ active }: { active: boolean }) {
       ? { id: config.destinationFolderId, name: config.destinationFolderName }
       : null);
     setSelected(new Map(config.sourceFolders.map(folder => [folder.id, folder])));
+    setExcluded(new Map((config.excludedFolders ?? []).map(folder => [folder.id, folder])));
   }, [savedFolderSettings]); // Status refreshes must not discard unsaved folder selections.
 
   const refreshMutation = useMutation({
@@ -366,34 +396,17 @@ export function SyncAgent({ active }: { active: boolean }) {
       return changed ? next : previous;
     });
   };
-  const onSelectSource = (folder: SyncSourceFolder, ancestors: number[]) => {
+  const onSelectSource = (folder: SyncSourceFolder, ancestors: number[], checked: boolean) => {
     setPickerError(null);
-    const next = new Map(selected);
-    if (next.has(folder.id)) {
-      next.delete(folder.id);
-    } else if ([...next.keys()].some(id => {
-      let parent = parentById.get(id);
-      while (parent !== undefined) {
-        if (parent === folder.id) return true;
-        parent = parentById.get(parent);
-      }
-      return false;
-    })) {
-      setPickerError("Deselect selected nested folders before choosing their parent.");
-      return;
-    } else if (ancestors.some(id => selected.has(id))) {
-      setPickerError("Choose either a parent folder or its nested folders.");
-      return;
-    } else {
-      next.set(folder.id, folder);
-    }
-    setSelected(next);
+    const next = toggleFolderSelection(folder, ancestors, checked, selected, excluded, parentById);
+    setSelected(next.roots);
+    setExcluded(next.exclusions);
   };
 
   const saveError = errorText(saveMutation.error);
   const actionError = errorText(intervalMutation.error) ?? errorText(enabledMutation.error) ?? errorText(dismissMutation.error);
   const configError = errorText(configQuery.error);
-  const canSave = !!destination && selected.size > 0 && !config?.enabled && !saveMutation.isPending && !intervalMutation.isPending;
+  const canSave = !!destination && selected.size > 0 && Array.isArray(config?.excludedFolders) && !config?.enabled && !saveMutation.isPending && !intervalMutation.isPending;
 
   return (
     <div className="space-y-5" data-testid="sync-agent">
@@ -427,6 +440,9 @@ export function SyncAgent({ active }: { active: boolean }) {
                 destinationFolderId: destination.id,
                 destinationFolderName: destination.name,
                 sourceFolders: [...selected.values()],
+              excludedFolders: [...excluded.values()].map(folder => ({
+                ...folder, ancestorIds: currentExclusionAncestors(folder, parentById),
+              })),
                 pollIntervalSeconds: config?.pollIntervalSeconds ?? 60,
               });
             }}
@@ -451,7 +467,7 @@ export function SyncAgent({ active }: { active: boolean }) {
           <button
             type="button"
             onClick={() => enabledMutation.mutate(!config.enabled)}
-            disabled={!config.configured || enabledMutation.isPending || intervalMutation.isPending}
+            disabled={!config.configured || !Array.isArray(config.excludedFolders) || enabledMutation.isPending || intervalMutation.isPending}
             aria-pressed={config.enabled}
             className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50 ${config.enabled ? "border bg-card hover:bg-secondary" : "bg-primary text-primary-foreground hover:bg-primary/90"}`}
             data-testid="button-toggle-sync"
@@ -475,6 +491,8 @@ export function SyncAgent({ active }: { active: boolean }) {
         </div>
       )}
       {config && <ConfigStatus config={config} />}
+      {config && <SyncFailureBanners active={active} />}
+      {config && <SyncActivityLog config={config} active={active} />}
       {config?.enabled && <p className="text-xs text-muted-foreground">Pause sync before changing its folders.</p>}
 
       <div className={`grid gap-4 lg:grid-cols-2 ${config?.enabled ? "opacity-70" : ""}`}>
@@ -549,6 +567,7 @@ export function SyncAgent({ active }: { active: boolean }) {
                 return next;
               })}
               selected={selected}
+              excluded={excluded}
               parentIds={[]}
               parentById={parentById}
               onParentLoaded={onParentLoaded}
@@ -556,31 +575,14 @@ export function SyncAgent({ active }: { active: boolean }) {
             />
             </div>
             <div className="mt-3 shrink-0 border-t pt-3 text-xs text-muted-foreground">
-              {selected.size} folder{selected.size === 1 ? "" : "s"} selected
+              {selected.size} root folder{selected.size === 1 ? "" : "s"} selected · includes subfolders
+              {excluded.size > 0 && ` · ${excluded.size} subtree${excluded.size === 1 ? "" : "s"} excluded`}
             </div>
           </div>
         </section>
       </div>
 
       {pickerError && <div className="text-sm text-destructive" role="alert">{pickerError}</div>}
-
-      {config?.lastRunConflicts.length ? (
-        <section className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4" aria-labelledby="sync-conflicts-heading">
-          <h3 id="sync-conflicts-heading" className="flex items-center gap-2 text-sm font-medium">
-            <CircleAlert className="size-4 text-amber-600" /> Items left unchanged
-          </h3>
-          <ul className="mt-2 space-y-1 text-sm">
-            {config.lastRunConflicts.map((conflict, index) => (
-              <li key={`${conflict.kind}:${conflict.path}:${index}`} className="break-all">
-                <span className="font-medium">{conflict.path}</span>
-                <span className="ml-2 text-xs text-muted-foreground">
-                  {conflict.kind === "path-conflict" ? "Path already exists" : "SharePoint-only item"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
 
       {config?.detachedPairs.length ? (
         <section className="rounded-lg border bg-card p-4" aria-labelledby="sync-detached-heading">

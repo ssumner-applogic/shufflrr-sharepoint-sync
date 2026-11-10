@@ -9,6 +9,7 @@ import type { SyncConfigLastRunStatus } from './syncConfigLastRunStatus';
 import type { SyncConfigPollIntervalSeconds } from './syncConfigPollIntervalSeconds';
 import type { SyncConflict } from './syncConflict';
 import type { SyncDetachedPair } from './syncDetachedPair';
+import type { SyncFolderExclusion } from './syncFolderExclusion';
 import type { SyncSourceFolder } from './syncSourceFolder';
 import type { SyncSummary } from './syncSummary';
 
@@ -19,10 +20,13 @@ export interface SyncConfig {
   /** @nullable */
   destinationFolderName: string | null;
   sourceFolders: SyncSourceFolder[];
+  excludedFolders: SyncFolderExclusion[];
   enabled: boolean;
   pollIntervalSeconds: SyncConfigPollIntervalSeconds;
   /** @nullable */
   nextRunAt: Date | null;
+  /** @nullable */
+  providerCooldownUntil: Date | null;
   /** @nullable */
   lastRunAt: Date | null;
   /** @nullable */

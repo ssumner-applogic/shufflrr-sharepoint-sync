@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SyncConfigInputPollIntervalSeconds } from './syncConfigInputPollIntervalSeconds';
+import type { SyncFolderExclusion } from './syncFolderExclusion';
 import type { SyncSourceFolder } from './syncSourceFolder';
 
 export interface SyncConfigInput {
@@ -25,4 +26,6 @@ export interface SyncConfigInput {
      * @maxItems 100
      */
   sourceFolders: SyncSourceFolder[];
+  /** @maxItems 1000 */
+  excludedFolders: SyncFolderExclusion[];
 }

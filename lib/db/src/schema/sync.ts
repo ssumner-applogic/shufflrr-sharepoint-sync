@@ -16,6 +16,12 @@ export interface SyncSourceFolder {
   name: string;
 }
 
+export interface SyncFolderExclusion extends SyncSourceFolder {
+  rootId: number;
+  /** Root-to-parent chain, including rootId but not this folder's own ID. */
+  ancestorIds: number[];
+}
+
 export interface SyncConflict {
   path: string;
   kind: "path-conflict" | "untracked-sharepoint-item";
@@ -34,6 +40,7 @@ export const syncConfigTable = pgTable("sync_config", {
   destinationFolderId: text("destination_folder_id"),
   destinationFolderName: text("destination_folder_name"),
   sourceFolders: jsonb("source_folders").$type<SyncSourceFolder[]>().notNull().default(sql`'[]'::jsonb`),
+  excludedFolders: jsonb("excluded_folders").$type<SyncFolderExclusion[]>().notNull().default(sql`'[]'::jsonb`),
   enabled: boolean("enabled").notNull().default(false),
   pollIntervalSeconds: integer("poll_interval_seconds").notNull().default(60),
   nextRunAt: timestamp("next_run_at", { withTimezone: true }),

@@ -10,6 +10,24 @@ The server now retains a separate Shufflrr connection per verified Clerk app ses
 
 # Deployment
 
+## Large-file and failure-banner release
+
+Pause sync for rollout, run `pnpm db:migrate` on the intended Neon database, then deploy the updated worker and matching API/frontend. Migration `0005_sync_file_failures` adds only persistent file-failure/dismissal/retry metadata and indexes; it does not change existing sync settings, mappings or provider files. No new variables are required. The worker must be running to process targeted retries, including retries requested while automatic sync is paused.
+
+The file limit is 300,000,000 bytes. Nonempty files use Graph upload sessions with sequential 5 MiB fragments, bounded stream memory, validated final size, and best-effort session cancellation. Signed upload capability URLs are server-only, never logged or sent to the browser, and upload-fragment requests never carry the Graph Authorization header. Provider cooldowns and the existing cross-process advisory lock remain authoritative. Interrupted queued retries survive a worker restart; retry mode cannot perform mirror deletions. Dismissing a banner hides the notice without canceling the queued job or changing automatic sync.
+
+## Subfolder-exclusion release
+
+Pause sync before rolling out this change. Run `pnpm db:migrate` on the intended Neon database; additive migration `0004_sync_folder_exclusions` adds the default-empty `sync_config.excluded_folders` JSONB column. Existing folder selections and provider files are unchanged. Deploy the updated **worker before enabling sync with exclusions**, then the matching API/frontend; an older worker does not understand excluded subtrees. Resume only after both services run the new version. No new environment variables are required.
+
+Folder-configuration requests now explicitly include `excludedFolders` (an empty array means no exclusions), preventing older clients from silently clearing saved exclusions. Stale clients must reload the updated frontend before saving. New exclusions are validated against provider ancestry; unchanged previously verified exclusions remain valid if their source disappears. The worker keeps excluded mappings/copies and protects ancestor folders from recursive deletion of excluded or unmanaged contents.
+
+## Sync activity-log release
+
+Before deploying this version's API and worker, run `pnpm db:migrate` with the intended Neon `DATABASE_URL`. The additive `0003_sync_activity_log` migration creates `sync_runs` and `sync_run_events`; it does not modify files, sync settings, or item mappings. Update both services together. No new environment variables are required.
+
+The worker checks PostgreSQL for newly enabled sync within approximately one second, independent of the selected provider polling interval. These database checks do not call the content providers. Provider cooldowns and the advisory lock remain authoritative. The activity history retains the latest 50 runs and paginates detailed events through authenticated `/api/sync/runs` and `/api/sync/events` routes. Paths and provider continuation links are never written to public logs.
+
 The production API serves the compiled SharePoint viewer and `/api` routes from one stateless Node.js process, binding to `0.0.0.0` on the host-provided `PORT`. Sync uses a separate worker process and durable PostgreSQL state.
 
 ## Railway

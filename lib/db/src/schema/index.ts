@@ -1,3 +1,4 @@
+export * from "./sync-failures";
 // Export your models here. Add one export per file
 // export * from "./posts";
 //
@@ -18,3 +19,4 @@
 //   export type Post = typeof postsTable.$inferSelect;
 
 export * from "./sync";
+export * from "./sync-log";

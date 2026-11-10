@@ -11,6 +11,48 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /sync/runs:
+    get:
+      operationId: getSyncRuns
+      summary: Read the most recent fifty sync runs
+      responses:
+        "200":
+          description: Newest runs first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SyncRun" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
+  /sync/events:
+    get:
+      operationId: getSyncRunEvents
+      summary: Read paginated per-item outcomes for a sync run
+      parameters:
+        - in: query
+          name: runId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/SyncEventStatus" }
+        - in: query
+          name: after
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        "200":
+          description: Events with full-run status counts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncEventPage" }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "404": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
   /sync/config:
     get:
       operationId: getSyncConfig
@@ -41,6 +83,51 @@ paths:
         "401": { $ref: "#/components/responses/ShufflrrError" }
         "409": { $ref: "#/components/responses/ShufflrrError" }
         "503": { $ref: "#/components/responses/ShufflrrError" }
+  /sync/failures:
+    get:
+      operationId: getSyncFailures
+      tags: [Sync]
+      parameters:
+        - { name: after, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: Undismissed unresolved file failures
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [failures, total, nextAfter]
+                properties:
+                  failures:
+                    type: array
+                    items: { $ref: "#/components/schemas/SyncFileFailure" }
+                  total: { type: integer }
+                  nextAfter: { type: integer, nullable: true }
+  /sync/failures/{id}/dismiss:
+    put:
+      operationId: dismissSyncFileFailure
+      tags: [Sync]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        "204": { description: Failure banner dismissed }
+  /sync/failures/{id}/retry:
+    post:
+      operationId: retrySyncFile
+      tags: [Sync]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        "202":
+          description: Targeted retry queued; respects provider cooldowns
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [retryAt]
+                properties:
+                  retryAt: { type: string, format: date-time }
   /sync/interval:
     put:
       operationId: setSyncInterval
@@ -295,12 +382,78 @@ components:
       properties:
         error: { type: string }
         requestId: { type: string }
+    SyncEventStatus:
+      type: string
+      enum: [created, copied, updated, moved, deleted, unchanged, conflict, failed, skipped]
+    SyncRun:
+      type: object
+      required: [id, startedAt, finishedAt, status, summary, error]
+      properties:
+        id: { type: string, format: uuid }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: ["string", "null"], format: date-time }
+        status: { type: string, enum: [running, success, partial, failed] }
+        summary: { oneOf: [{ $ref: "#/components/schemas/SyncSummary" }, { type: "null" }] }
+        error: { type: ["string", "null"] }
+    SyncLogEntry:
+      type: object
+      required: [id, status, path, destinationPath, itemType, message, occurredAt]
+      properties:
+        id: { type: integer }
+        status: { $ref: "#/components/schemas/SyncEventStatus" }
+        path: { type: ["string", "null"] }
+        destinationPath: { type: ["string", "null"] }
+        itemType: { type: string, enum: [file, folder, run] }
+        message: { type: string }
+        occurredAt: { type: string, format: date-time }
+    SyncStatusCount:
+      type: object
+      required: [status, count]
+      properties:
+        status: { $ref: "#/components/schemas/SyncEventStatus" }
+        count: { type: integer, minimum: 0 }
+    SyncEventPage:
+      type: object
+      required: [events, counts, nextAfter]
+      properties:
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/SyncLogEntry" }
+        counts:
+          type: array
+          items: { $ref: "#/components/schemas/SyncStatusCount" }
+        nextAfter: { type: ["integer", "null"] }
     SyncSourceFolder:
       type: object
       required: [id, name]
       properties:
         id: { type: integer, minimum: 1 }
         name: { type: string, minLength: 1, maxLength: 255 }
+    SyncFileFailure:
+      type: object
+      required: [id, name, path, reason, lastFailedAt, retryRequestedAt, fileUrl, parentFolderUrl, canRetry]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        path: { type: string }
+        reason: { type: string }
+        lastFailedAt: { type: string, format: date-time }
+        retryRequestedAt: { type: string, format: date-time, nullable: true }
+        fileUrl: { type: string, format: uri }
+        parentFolderUrl: { type: string, format: uri }
+        canRetry: { type: boolean }
+    SyncFolderExclusion:
+      type: object
+      required: [id, name, rootId, ancestorIds]
+      properties:
+        id: { type: integer, minimum: 1 }
+        name: { type: string, minLength: 1, maxLength: 255 }
+        rootId: { type: integer, minimum: 1 }
+        ancestorIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { type: integer, minimum: 1 }
     SyncConflict:
       type: object
       required: [path, kind]
@@ -326,7 +479,7 @@ components:
         createdAt: { type: string, format: date-time }
     SyncConfig:
       type: object
-      required: [configured, destinationFolderId, destinationFolderName, sourceFolders, enabled, pollIntervalSeconds, nextRunAt, lastRunAt, lastRunStatus, lastRunSummary, lastRunConflicts, lastRunError, detachedPairs]
+      required: [configured, destinationFolderId, destinationFolderName, sourceFolders, excludedFolders, enabled, pollIntervalSeconds, nextRunAt, providerCooldownUntil, lastRunAt, lastRunStatus, lastRunSummary, lastRunConflicts, lastRunError, detachedPairs]
       properties:
         configured: { type: boolean }
         destinationFolderId: { type: ["string", "null"] }
@@ -334,9 +487,13 @@ components:
         sourceFolders:
           type: array
           items: { $ref: "#/components/schemas/SyncSourceFolder" }
+        excludedFolders:
+          type: array
+          items: { $ref: "#/components/schemas/SyncFolderExclusion" }
         enabled: { type: boolean }
         pollIntervalSeconds: { type: integer, enum: [1, 5, 30, 60, 300, 3600] }
         nextRunAt: { type: ["string", "null"], format: date-time }
+        providerCooldownUntil: { type: ["string", "null"], format: date-time }
         lastRunAt: { type: ["string", "null"], format: date-time }
         lastRunStatus: { type: ["string", "null"], enum: [running, success, partial, failed, null] }
         lastRunSummary: { oneOf: [{ $ref: "#/components/schemas/SyncSummary" }, { type: "null" }] }
@@ -349,7 +506,7 @@ components:
           items: { $ref: "#/components/schemas/SyncDetachedPair" }
     SyncConfigInput:
       type: object
-      required: [destinationFolderId, destinationFolderName, sourceFolders]
+      required: [destinationFolderId, destinationFolderName, sourceFolders, excludedFolders]
       properties:
         pollIntervalSeconds: { type: integer, enum: [1, 5, 30, 60, 300, 3600], default: 60 }
         destinationFolderId: { type: string, minLength: 1, maxLength: 500 }
@@ -359,6 +516,10 @@ components:
           minItems: 1
           maxItems: 100
           items: { $ref: "#/components/schemas/SyncSourceFolder" }
+        excludedFolders:
+          type: array
+          maxItems: 1000
+          items: { $ref: "#/components/schemas/SyncFolderExclusion" }
     SyncPollingInput:
       type: object
       required: [pollIntervalSeconds]

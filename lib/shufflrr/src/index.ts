@@ -21,6 +21,7 @@ export interface Entry {
   userPermissions?: string | number;
   size?: number;
   modifiedAt?: string;
+  fileHistoryId?: number;
 }
 export interface RequestEvent {
   requestId: string;
@@ -72,6 +73,8 @@ export function parseEntries(value: unknown, foldersOnly = false): Entry[] {
     keys.add(key);
     return {
       id: item.id, name: item.name, isFolder: item.isFolder,
+      ...(typeof item.fileHistoryId === "number" && Number.isSafeInteger(item.fileHistoryId) && item.fileHistoryId > 0
+        ? { fileHistoryId: item.fileHistoryId } : {}),
       ...(item.userPermissions == null ? {} : { userPermissions: item.userPermissions as string | number }),
       ...(item.size == null ? {} : { size: item.size as number }),
       ...(item.modifiedDate == null ? {} : { modifiedAt: item.modifiedDate as string }),
@@ -104,7 +107,8 @@ export class ShufflrrClient {
         const cookie = await this.jar.getCookieString(url);
         const multipart = body instanceof FormData;
         const response = await requestGate.request(() => this.transport(url, {
-          method, redirect: "manual", signal: AbortSignal.timeout(this.options.timeoutMs),
+          method, redirect: "manual", signal: AbortSignal.timeout(
+            route === "/files/{id}/download" ? 15 * 60_000 : this.options.timeoutMs),
           headers: {
             Accept: "application/json",
             "X-Requested-With": "XMLHttpRequest", "X-Request-ID": requestId,

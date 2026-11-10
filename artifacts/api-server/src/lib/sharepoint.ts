@@ -1,6 +1,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { ProviderGate, requestSpacing } from "@workspace/shufflrr/http-policy";
 import type { AccessReport, FolderListing } from "@workspace/api-zod";
+import { MAX_SYNC_FILE_BYTES, FileTransferError, uploadChunks, type SyncFileStream } from "./sync-transfer";
 
 export const libraryUrl = "https://sandvine.sharepoint.com/sites/ApplogicKnowledgeBase/Shared%20Documents";
 const graphRoot = "https://graph.microsoft.com/v1.0";
@@ -417,12 +418,13 @@ export async function updateSyncItem(
 export async function uploadSyncFile(
   parentId: string,
   name: string,
-  bytes: Uint8Array,
+  bytes: Uint8Array | SyncFileStream,
   existingId?: string,
 ): Promise<SyncDriveItem> {
   validateItemName(name);
-  if (bytes.byteLength > 100 * 1024 * 1024) {
-    throw new AccessError("SyncLimit", "Files larger than 100 MiB are not supported by this sync.", 413);
+  const size = bytes instanceof Uint8Array ? bytes.byteLength : bytes.size;
+  if (size > MAX_SYNC_FILE_BYTES) {
+    throw new AccessError("SyncLimit", "Files larger than 300 MB are not supported by this sync.", 413);
   }
   const { driveId } = await location();
   const resolvedParentId = parentId === "root" ? await getRootId(driveId) : parentId;
@@ -430,13 +432,56 @@ export async function uploadSyncFile(
     ? `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(existingId)}/content`
     : `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(resolvedParentId)}:/${encodeURIComponent(name)}:/content`;
   try {
+    if (size > 0) {
+      const sessionPath = existingId
+        ? `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(existingId)}/createUploadSession`
+        : `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(resolvedParentId)}:/${encodeURIComponent(name)}:/createUploadSession`;
+      const session = await graph<{ uploadUrl: string }>(sessionPath, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item: { "@microsoft.graph.conflictBehavior": existingId ? "replace" : "fail", name } }),
+      });
+      const uploadUrl = new URL(session.uploadUrl);
+      if (uploadUrl.protocol !== "https:" || uploadUrl.username || uploadUrl.password ||
+        (uploadUrl.port && uploadUrl.port !== "443") ||
+        !/\.(sharepoint\.com|up\.1drv\.com)$/i.test(uploadUrl.hostname)) {
+        throw new FileTransferError("SharePoint returned an unsupported upload destination.");
+      }
+      const source = bytes instanceof Uint8Array
+        ? { size, body: new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(bytes); controller.close(); } }) }
+        : bytes;
+      let committed = false;
+      try {
+        const result = await uploadChunks(source, async (chunk, start, total) =>
+          graphGate.request(() => fetch(uploadUrl, {
+            method: "PUT", redirect: "error", signal: AbortSignal.timeout(120_000),
+            headers: { "Content-Type": "application/octet-stream",
+              "Content-Length": String(chunk.length), "Content-Range": `bytes ${start}-${start + chunk.length - 1}/${total}` },
+            body: chunk,
+          }), "PUT"));
+        committed = true;
+        return syncDriveItem({ ...result, parentReference: { id: resolvedParentId } });
+      } finally {
+        // The capability URL is server-only. Cancellation is best effort and obeys the same provider gate.
+        if (!committed) await graphGate.request(() => fetch(uploadUrl, {
+          method: "DELETE", redirect: "error", signal: AbortSignal.timeout(20_000),
+        }), "DELETE").then(response => response.body?.cancel()).catch(() => {});
+      }
+    }
+    if (!(bytes instanceof Uint8Array)) {
+      const reader = bytes.body.getReader();
+      try {
+        let read = await reader.read();
+        while (!read.done && !read.value.length) read = await reader.read();
+        if (!read.done) throw new FileTransferError("The source file size changed. Try again.");
+      } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+    }
     const item = await graph<GraphItem>(path, {
       method: "PUT",
       headers: {
         "Content-Type": "application/octet-stream",
         ...(existingId ? {} : { "If-None-Match": "*" }),
       },
-      body: bytes,
+      body: new Uint8Array(0),
     });
     return syncDriveItem(item);
   } catch (error) {

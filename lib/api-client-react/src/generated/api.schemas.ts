@@ -10,6 +10,89 @@ export interface ShufflrrRequestError {
   requestId: string;
 }
 
+export type SyncEventStatus = typeof SyncEventStatus[keyof typeof SyncEventStatus];
+
+
+export const SyncEventStatus = {
+  created: 'created',
+  copied: 'copied',
+  updated: 'updated',
+  moved: 'moved',
+  deleted: 'deleted',
+  unchanged: 'unchanged',
+  conflict: 'conflict',
+  failed: 'failed',
+  skipped: 'skipped',
+} as const;
+
+export type SyncRunStatus = typeof SyncRunStatus[keyof typeof SyncRunStatus];
+
+
+export const SyncRunStatus = {
+  running: 'running',
+  success: 'success',
+  partial: 'partial',
+  failed: 'failed',
+} as const;
+
+export interface SyncSummary {
+  /** @minimum 0 */
+  createdFolders: number;
+  /** @minimum 0 */
+  copiedFiles: number;
+  /** @minimum 0 */
+  updatedFiles: number;
+  /** @minimum 0 */
+  deletedItems: number;
+  /** @minimum 0 */
+  conflicts: number;
+}
+
+export interface SyncRun {
+  id: string;
+  startedAt: string;
+  /** @nullable */
+  finishedAt: string | null;
+  status: SyncRunStatus;
+  summary: SyncSummary | null;
+  /** @nullable */
+  error: string | null;
+}
+
+export type SyncLogEntryItemType = typeof SyncLogEntryItemType[keyof typeof SyncLogEntryItemType];
+
+
+export const SyncLogEntryItemType = {
+  file: 'file',
+  folder: 'folder',
+  run: 'run',
+} as const;
+
+export interface SyncLogEntry {
+  id: number;
+  status: SyncEventStatus;
+  /** @nullable */
+  path: string | null;
+  /** @nullable */
+  destinationPath: string | null;
+  itemType: SyncLogEntryItemType;
+  message: string;
+  occurredAt: string;
+}
+
+export interface SyncStatusCount {
+  status: SyncEventStatus;
+  /** @minimum 0 */
+  count: number;
+}
+
+export interface SyncEventPage {
+  events: SyncLogEntry[];
+  counts: SyncStatusCount[];
+  /** @nullable */
+  nextAfter: number | null;
+}
+
 export interface SyncSourceFolder {
   /** @minimum 1 */
   id: number;
@@ -18,6 +101,37 @@ export interface SyncSourceFolder {
      * @maxLength 255
      */
   name: string;
+}
+
+export interface SyncFileFailure {
+  id: number;
+  name: string;
+  path: string;
+  reason: string;
+  lastFailedAt: string;
+  /** @nullable */
+  retryRequestedAt: string | null;
+  fileUrl: string;
+  parentFolderUrl: string;
+  canRetry: boolean;
+}
+
+export interface SyncFolderExclusion {
+  /** @minimum 1 */
+  id: number;
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  name: string;
+  /** @minimum 1 */
+  rootId: number;
+  /**
+     * @minItems 1
+     * @maxItems 100
+     * @items.minimum 1
+     */
+  ancestorIds: number[];
 }
 
 export type SyncConflictKind = typeof SyncConflictKind[keyof typeof SyncConflictKind];
@@ -31,19 +145,6 @@ export const SyncConflictKind = {
 export interface SyncConflict {
   path: string;
   kind: SyncConflictKind;
-}
-
-export interface SyncSummary {
-  /** @minimum 0 */
-  createdFolders: number;
-  /** @minimum 0 */
-  copiedFiles: number;
-  /** @minimum 0 */
-  updatedFiles: number;
-  /** @minimum 0 */
-  deletedItems: number;
-  /** @minimum 0 */
-  conflicts: number;
 }
 
 export interface SyncDetachedPair {
@@ -85,10 +186,13 @@ export interface SyncConfig {
   /** @nullable */
   destinationFolderName: string | null;
   sourceFolders: SyncSourceFolder[];
+  excludedFolders: SyncFolderExclusion[];
   enabled: boolean;
   pollIntervalSeconds: SyncConfigPollIntervalSeconds;
   /** @nullable */
   nextRunAt: string | null;
+  /** @nullable */
+  providerCooldownUntil: string | null;
   /** @nullable */
   lastRunAt: string | null;
   /** @nullable */
@@ -129,6 +233,8 @@ export interface SyncConfigInput {
      * @maxItems 100
      */
   sourceFolders: SyncSourceFolder[];
+  /** @maxItems 1000 */
+  excludedFolders: SyncFolderExclusion[];
 }
 
 export type SyncPollingInputPollIntervalSeconds = typeof SyncPollingInputPollIntervalSeconds[keyof typeof SyncPollingInputPollIntervalSeconds];
@@ -262,6 +368,43 @@ export interface HealthStatus {
  * Safe request or provider failure
  */
 export type ShufflrrErrorResponse = ShufflrrRequestError;
+
+export type GetSyncRunEventsParams = {
+runId: string;
+status?: SyncEventStatus;
+/**
+ * @minimum 0
+ */
+after?: number;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+};
+
+export type GetSyncFailuresParams = {
+/**
+ * @minimum 0
+ */
+after?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type GetSyncFailures200 = {
+  failures: SyncFileFailure[];
+  total: number;
+  /** @nullable */
+  nextAfter: number | null;
+};
+
+export type RetrySyncFile202 = {
+  retryAt: string;
+};
 
 export type ListShufflrrItemsParams = {
 /**

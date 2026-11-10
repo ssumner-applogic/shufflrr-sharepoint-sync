@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, desc, count, inArray, isNull, sql } from "drizzle-orm";
 import { getAuth } from "@clerk/express";
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
@@ -7,19 +7,27 @@ import {
   SaveSyncConfigBody,
   SetSyncEnabledBody,
   SetSyncIntervalBody,
+  GetSyncRunsResponse,
+  GetSyncRunEventsQueryParams,
+  GetSyncRunEventsResponse,
   type SyncConfigInput,
 } from "@workspace/api-zod";
 import {
   syncConfigTable,
   syncItemsTable,
   syncOrphanNoticesTable,
+  syncRunsTable,
+  syncRunEventsTable,
   type SyncSourceFolder,
+  type SyncFolderExclusion,
 } from "@workspace/db/schema";
 import { ShufflrrError } from "@workspace/shufflrr";
 import { newShufflrrClient, shufflrrConfig } from "../lib/shufflrr";
 import { AccessError, getSyncDriveItem } from "../lib/sharepoint";
 import { SYNC_LOCK_ID } from "../lib/sync-runner";
 import { ProviderBackoffError } from "@workspace/shufflrr/http-policy";
+import { exclusionNoticeKey, validateFolderExclusions } from "../lib/sync-exclusions";
+import { syncFailureRoutes } from "./sync-failures";
 
 const router: IRouter = Router();
 
@@ -46,15 +54,19 @@ router.use("/sync", (req, res, next) => {
   next();
 });
 
+router.use("/sync/failures", syncFailureRoutes(operationError));
+
 function emptyConfig() {
   return {
     configured: false,
     destinationFolderId: null,
     destinationFolderName: null,
     sourceFolders: [],
+    excludedFolders: [],
     enabled: false,
     pollIntervalSeconds: 60,
     nextRunAt: null,
+    providerCooldownUntil: null,
     lastRunAt: null,
     lastRunStatus: null,
     lastRunSummary: null,
@@ -82,9 +94,12 @@ async function responseConfig() {
     destinationFolderId: config.destinationFolderId,
     destinationFolderName: config.destinationFolderName,
     sourceFolders: config.sourceFolders,
+    excludedFolders: config.excludedFolders,
     enabled: config.enabled,
     pollIntervalSeconds: config.pollIntervalSeconds,
     nextRunAt: config.nextRunAt,
+    providerCooldownUntil: config.providerRetryAt && config.providerRetryAt.getTime() > Date.now()
+      ? config.providerRetryAt : null,
     lastRunAt: config.lastRunAt,
     lastRunStatus: config.lastRunStatus,
     lastRunSummary: config.lastRunSummary,
@@ -129,6 +144,46 @@ router.get("/sync/config", async (req, res): Promise<void> => {
   }
 });
 
+router.get("/sync/runs", async (req, res): Promise<void> => {
+  try {
+    const { db } = await import("@workspace/db");
+    const runs = await db.select().from(syncRunsTable)
+      .orderBy(desc(syncRunsTable.startedAt), desc(syncRunsTable.id)).limit(50);
+    res.json(GetSyncRunsResponse.parse(runs));
+  } catch (error) { operationError(req, res, error); }
+});
+
+router.get("/sync/events", async (req, res): Promise<void> => {
+  const parsed = GetSyncRunEventsQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Choose a valid sync run and status.", requestId: String(req.id) });
+    return;
+  }
+  try {
+    const { db } = await import("@workspace/db");
+    const { runId, status, after, limit = 100 } = parsed.data;
+    const [run] = await db.select({ id: syncRunsTable.id }).from(syncRunsTable)
+      .where(eq(syncRunsTable.id, runId)).limit(1);
+    if (!run) {
+      res.status(404).json({ error: "Sync run not found. Older run logs may have expired.", requestId: String(req.id) });
+      return;
+    }
+    const events = await db.select().from(syncRunEventsTable).where(and(
+      eq(syncRunEventsTable.runId, runId),
+      status ? eq(syncRunEventsTable.status, status) : undefined,
+      after === undefined ? undefined : gt(syncRunEventsTable.id, after),
+    )).orderBy(syncRunEventsTable.id).limit(limit + 1);
+    const counts = await db.select({ status: syncRunEventsTable.status, count: count() })
+      .from(syncRunEventsTable).where(eq(syncRunEventsTable.runId, runId)).groupBy(syncRunEventsTable.status);
+    const hasMore = events.length > limit;
+    const page = events.slice(0, limit);
+    res.json(GetSyncRunEventsResponse.parse({
+      events: page, counts,
+      nextAfter: hasMore ? page.at(-1)!.id : null,
+    }));
+  } catch (error) { operationError(req, res, error); }
+});
+
 router.put("/sync/config", async (req, res): Promise<void> => {
   const parsed = SaveSyncConfigBody.safeParse(req.body);
   if (!parsed.success) {
@@ -151,7 +206,10 @@ router.put("/sync/config", async (req, res): Promise<void> => {
     }
 
     const shufflrr = newShufflrrClient();
+    const [storedScope] = await db.select({ excludedFolders: syncConfigTable.excludedFolders })
+      .from(syncConfigTable).where(eq(syncConfigTable.id, 1)).limit(1);
     let sourceFolders: SyncSourceFolder[];
+    let excludedFolders: SyncFolderExclusion[];
     try {
       const credentials = shufflrrConfig();
       await shufflrr.login(credentials.email, credentials.password);
@@ -159,6 +217,8 @@ router.put("/sync/config", async (req, res): Promise<void> => {
         const currentFolder = await shufflrr.folder(folder.id);
         return { id: currentFolder.id, name: currentFolder.name };
       }));
+      excludedFolders = await validateFolderExclusions(shufflrr, sourceFolders, parsed.data.excludedFolders,
+        storedScope?.excludedFolders ?? []);
     } finally {
       await shufflrr.close();
     }
@@ -167,6 +227,7 @@ router.put("/sync/config", async (req, res): Promise<void> => {
       destinationFolderId: destinationId,
       destinationFolderName: destination.name || "Shared Documents",
       sourceFolders,
+      excludedFolders,
       pollIntervalSeconds: parsed.data.pollIntervalSeconds ?? 60,
     };
     await db.transaction(async tx => {
@@ -213,6 +274,30 @@ router.put("/sync/config", async (req, res): Promise<void> => {
             destinationFolderId: oldDestinationId,
             destinationFolderName: oldDestinationName,
           })));
+        }
+      }
+
+      if (current?.destinationFolderId === destinationId) {
+        const previousKeys = new Set(current.excludedFolders.map(exclusionNoticeKey));
+        const newKeys = new Set(excludedFolders.map(exclusionNoticeKey));
+        const restored = current.excludedFolders.filter(folder => !newKeys.has(exclusionNoticeKey(folder)));
+        if (restored.length) await tx.update(syncOrphanNoticesTable).set({ dismissedAt: new Date() })
+          .where(and(eq(syncOrphanNoticesTable.destinationFolderId, destinationId),
+            inArray(syncOrphanNoticesTable.sourceRootId, restored.map(exclusionNoticeKey))));
+        const newlyExcluded = excludedFolders.filter(folder => !previousKeys.has(exclusionNoticeKey(folder)));
+        if (newlyExcluded.length) {
+          const mappings = await tx.select().from(syncItemsTable)
+            .where(eq(syncItemsTable.destinationRootId, destinationId));
+          const notices = newlyExcluded.flatMap(folder => {
+            const mapping = mappings.find(item => item.sourceIsFolder &&
+              item.sourceRootId === String(folder.rootId) && item.sourceId === String(folder.id));
+            return mapping ? [{
+              sourceRootId: exclusionNoticeKey(folder), sourceRootName: mapping.relativePath,
+              destinationFolderId: destinationId,
+              destinationFolderName: `${input.destinationFolderName}/${mapping.relativePath}`,
+            }] : [];
+          });
+          if (notices.length) await tx.insert(syncOrphanNoticesTable).values(notices);
         }
       }
 
@@ -291,7 +376,11 @@ router.put("/sync/enabled", async (req, res): Promise<void> => {
       await tx.insert(syncConfigTable).values({ id: 1, enabled: parsed.data.enabled })
         .onConflictDoUpdate({ target: syncConfigTable.id, set: {
           enabled: parsed.data.enabled,
-          nextRunAt: sql`${syncConfigTable.providerRetryAt}`,
+          // An enable transition is due now, never one polling interval from now.
+          // Repeating an enable request must not bypass the existing schedule.
+          nextRunAt: parsed.data.enabled && !config?.enabled
+            ? sql`greatest(now(), coalesce(${syncConfigTable.providerRetryAt}, now()))`
+            : config?.nextRunAt ?? null,
           updatedAt: new Date(),
         } });
     });

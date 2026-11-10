@@ -1,3 +1,27 @@
+# Sync activity and first-run timing
+
+## Recursive selection and exclusions
+
+Selected Shufflrr roots include all descendants. Expanded descendants show inherited checks; unchecked subfolders exclude their entire subtree, and affected ancestors show a mixed check state. To change scope, pause sync, uncheck unwanted subfolders, save settings, then enable sync. Rechecking an excluded folder includes its subtree again. Descendants of an excluded folder stay unchecked; reinclude their parent first.
+
+Exclusions are stored in Neon and enforced by the worker, not just the tree UI. Existing excluded SharePoint copies and their mappings are retained; newly excluded mapped folders appear in **No longer syncing** notices, with manual deletion advised. Excluded items are reported as skipped in the activity log. Folder deletions that would recursively remove excluded or unmanaged copies are blocked. Deploy migration `0004_sync_folder_exclusions` and the updated worker before using exclusions. Test tree selection with `pnpm test:sync-selection`.
+
+Enabling sync makes its first run due immediately, rather than waiting for the polling interval. The private worker checks for newly enabled work within approximately one second; an active provider cooldown still takes priority. Changing polling intervals does not bypass cooldowns or allow overlapping runs.
+
+The Sync Agent's expandable **Activity log**, directly beneath its status banner, lists the most recent 50 runs. Choose a run and filter its paginated file/folder outcomes: copied, updated, created, moved/renamed, deleted, unchanged, conflicts, failures, and skipped items. Full-run counts are independent of the selected page. A completed run with conflicts is labeled separately from a successful run.
+
+Partial progress and conflict details survive later failures. Failed items include their relative paths and safe reasons; source items not attempted after a fatal error are explicitly marked skipped. Files up to **300 MB (300,000,000 bytes)** are supported. A failed run stops further provider writes and deletions rather than implying remaining items succeeded.
+
+## Large files and failure banners
+
+The worker streams Shufflrr downloads into sequential 5 MiB Microsoft Graph upload-session fragments, including files above Graph's 250 MB simple-upload limit. Memory is bounded by the upload fragment rather than the entire file. Source length/EOF and Graph's final ID/size acknowledgement must validate before sync succeeds. Failed sessions are canceled best-effort, and provider-directed pacing/backoff still applies. Download streams have a bounded 15-minute deadline; each fragment has a 120-second timeout. Transfers do not depend on local disk or browser uptime.
+
+Unresolved file failures and file-name conflicts appear as persistent, paginated banners below the sync status. Each gives the reason, **Open file in Shufflrr**, **Open parent folder in Shufflrr**, **Try again**, and dismiss. Links use the configured portal and its native routes; users may need to sign in to Shufflrr there. Dismissal does not disable sync or cancel an already queued retry. An unchanged failure stays dismissed; a changed source version/reason or recurrence after resolution reappears.
+
+**Try again** queues a durable, one-file retry, even while automatic sync is paused. The private worker processes queued files sequentially; a retry checks the saved scope/exclusions, reconciles only that file and necessary ancestors, never performs mirror deletions, and respects provider cooldowns. A configuration change that removes the file from scope prevents the retry. Successful reconciliation resolves its banner automatically. A fatal retry failure leaves a safe reason and allows another attempt. Run `pnpm db:migrate` for additive migration `0005_sync_file_failures` before updating both API and worker; no new environment variables are needed.
+
+Apply `pnpm db:migrate` before running this release. Migration `0003_sync_activity_log` adds protected PostgreSQL history tables without changing provider content or existing settings/mappings. Both API and worker must run the updated code against the same database. Only log metadata older than the latest 50 runs is automatically pruned. The first new run preserves any available pre-upgrade last-known result and conflicts as an explicitly marked historical result; detailed successful file paths cannot be reconstructed retroactively.
+
 # Shufflrr-SharePoint Sync Agent
 
 A sign-in-protected SharePoint and Shufflrr document browser with access diagnostics. Microsoft app-only credentials, the Shufflrr service-account credentials, and provider session cookies remain on the server. Clerk handles app sign-in.
