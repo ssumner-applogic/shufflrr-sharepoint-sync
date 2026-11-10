@@ -295,6 +295,11 @@ export function SyncAgent({ active }: { active: boolean }) {
   const [expandedSharePoint, setExpandedSharePoint] = useState<Set<string>>(new Set());
   const [expandedShufflrr, setExpandedShufflrr] = useState<Set<number>>(new Set());
   const [pickerError, setPickerError] = useState<string | null>(null);
+  const savedFolderSettings = JSON.stringify(config ? {
+    destinationFolderId: config.destinationFolderId,
+    destinationFolderName: config.destinationFolderName,
+    sourceFolders: config.sourceFolders,
+  } : null);
 
   useEffect(() => {
     if (!config) return;
@@ -302,7 +307,22 @@ export function SyncAgent({ active }: { active: boolean }) {
       ? { id: config.destinationFolderId, name: config.destinationFolderName }
       : null);
     setSelected(new Map(config.sourceFolders.map(folder => [folder.id, folder])));
-  }, [configQuery.dataUpdatedAt]); // Refresh shared settings when another signed-in user saves.
+  }, [savedFolderSettings]); // Status refreshes must not discard unsaved folder selections.
+
+  const refreshMutation = useMutation({
+    mutationFn: async () => {
+      // Reload visible branches, and mark closed branches stale for their next expansion.
+      // Keep cached rows rendered while requests run to avoid collapsing or flashing the trees.
+      const results = await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ["sync-sharepoint-folders"] }, { throwOnError: true }),
+        queryClient.invalidateQueries({ queryKey: getListShufflrrItemsQueryKey() }, { throwOnError: true }),
+        queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }, { throwOnError: true }),
+      ]);
+      if (results.some(result => result.status === "rejected")) {
+        throw new Error("Some updates could not be loaded. Refresh again or check the folder errors below.");
+      }
+    },
+  });
 
   const saveMutation = useMutation({
     mutationFn: (input: SyncConfigInput) => saveSyncConfig(input),
@@ -363,6 +383,18 @@ export function SyncAgent({ active }: { active: boolean }) {
     <div className="space-y-5" data-testid="sync-agent">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Sync Agent</h2>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => refreshMutation.mutate()}
+            disabled={!active || refreshMutation.isPending || saveMutation.isPending || enabledMutation.isPending}
+            aria-busy={refreshMutation.isPending}
+            className="inline-flex items-center gap-2 rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-secondary disabled:opacity-50"
+            data-testid="button-refresh-sync"
+          >
+            <RefreshCw className={`size-4 ${refreshMutation.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+            {refreshMutation.isPending ? "Refreshing…" : "Refresh"}
+          </button>
         {config && (
           <button
             type="button"
@@ -376,8 +408,12 @@ export function SyncAgent({ active }: { active: boolean }) {
             {enabledMutation.isPending ? "Saving…" : config.enabled ? "Pause sync" : "Enable sync"}
           </button>
         )}
+        </div>
       </div>
 
+      {refreshMutation.isError && (
+        <div className="text-sm text-destructive" role="alert">{errorText(refreshMutation.error)}</div>
+      )}
       {configQuery.isLoading && <div className="text-sm text-muted-foreground">Loading sync settings…</div>}
       {configError && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
