@@ -2,3 +2,4 @@
 - [Preview input focus](preview-input-focus.md) — check Visual Editor selection mode when typing goes to the Agent prompt instead of an input.
 - [Codegen runtime versions](codegen-runtime-versions.md) — pin generator runtime versions to consumers; workspace dependency auto-detection can select incompatible defaults.
 - [Shufflrr authentication lifetime](shufflrr-auth-lifetime.md) — retain authentication for the signed-in app session, not a short fixed timer.
+- [Neon connection transfer](neon-connection-transfer.md) — Neon MCP and CLI authentication are separate; credential-transfer guards may block connection-string handoff.
