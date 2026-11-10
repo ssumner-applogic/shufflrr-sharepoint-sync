@@ -35,6 +35,12 @@ Before enabling sync, the Microsoft application must have `Sites.Selected` acces
 
 The SharePoint viewer and all SharePoint API routes require a valid Clerk session. `/healthz` remains public for platform health checks; `/api/auth/config` returns only the Clerk publishable key. Configure the deployed domain and email/password sign-in in Clerk. Any signed-in user can change the shared sync configuration. The worker polls once per minute, does not use a browser session, and exits cleanly on shutdown. A PostgreSQL advisory lock prevents overlapping runs across worker instances.
 
+### Sync troubleshooting
+
+Restart the API and worker after changing their database connection so existing connection pools do not keep using the previous database. Schema creation does not migrate saved sync configuration or item mappings: preserve those records when moving an existing sync to another database. An empty database requires a new configuration; existing unmapped SharePoint copies remain conflicts and are not adopted or overwritten automatically.
+
+Failed runs show a safe reason and a reference ID. Find the matching `sync_run_failed` log event by its `requestId`; it records the sync phase and safe provider/database error codes without logging folder paths, file contents, connection strings, or raw database errors. The original failure cannot be reconstructed from older logs that only recorded `development_sync_run_failed`.
+
 Railway Cron Jobs run no more often than every five minutes, so they cannot provide the selected one-minute polling interval. Use the always-on worker service above; it consumes worker resources while running. The worker does nothing when sync is paused.
 
 Only content mapped by this app inside the currently configured SharePoint destination is updated or deleted. Initial conflicts and untracked SharePoint items are reported and left unchanged. Changing the sync scope retains old copies and creates dismissible notices; users must delete those copies manually if they no longer want them. Source files above 100 MiB are not supported.

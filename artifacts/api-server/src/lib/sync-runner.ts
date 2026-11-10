@@ -1,4 +1,6 @@
 import { and, eq, inArray, notInArray } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { logger } from "./logger";
 import {
   syncConfigTable,
   syncItemsTable,
@@ -63,8 +65,40 @@ function safeError(error: unknown): string {
     if (error.status === 401 || error.status === 403) return "SharePoint denied a sync operation. Check write access to the selected folder.";
     if (error.status === 404) return "The SharePoint destination or a managed item could not be found.";
     if (error.status === 409 || error.code === "SyncConflict") return "A SharePoint item changed during sync and was left unchanged.";
+    if (error.status === 413 || error.code === "SyncLimit") return "A file or folder exceeded the SharePoint sync safety limit.";
+    if (error.status === 429) return "SharePoint throttled this sync run. It will be retried at the next scheduled check.";
+    if (error.status === 400) return "SharePoint rejected a sync operation. Check file and folder names and the server log reference.";
+  }
+  if (error instanceof Error) {
+    // Only return messages defined by the runner; provider/database errors can contain sensitive data.
+    const knownMessages = [
+      "A Shufflrr folder cycle was detected.",
+      "The Shufflrr folder limit was reached.",
+      "The Shufflrr nesting limit was reached.",
+      "The Shufflrr item limit was reached.",
+      "Selected Shufflrr folders overlap. Select a parent or its nested folder, not both.",
+      "The SharePoint destination exceeded a sync safety limit.",
+      "A SharePoint folder cycle was detected.",
+      "A selected destination folder could not be resolved.",
+      "A Shufflrr file download failed.",
+      "A Shufflrr file exceeds the 100 MiB sync limit.",
+      "A SharePoint item could not be created or resolved.",
+      "The shared sync configuration is incomplete.",
+    ];
+    if (knownMessages.includes(error.message)) return error.message;
+    if (error.name === "TimeoutError" || error.name === "AbortError") {
+      return "A provider request timed out. The next scheduled check will retry the sync.";
+    }
   }
   return "The sync run could not complete. Check the provider connections and permissions.";
+}
+
+type SyncPhase = "configuration" | "authentication" | "source_listing" | "destination_listing" | "reconciliation" | "save_status";
+
+function diagnosticCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const value = "code" in error ? error.code : undefined;
+  return typeof value === "string" && /^[a-zA-Z0-9_]{1,64}$/.test(value) ? value : undefined;
 }
 
 async function loadSourceTree(client: ShufflrrClient, roots: SyncSourceFolder[]): Promise<SourceRecord[]> {
@@ -228,12 +262,16 @@ async function performSync(
     destinationFolderName: string;
     sourceFolders: SyncSourceFolder[];
   },
+  onPhase: (phase: SyncPhase) => void,
 ): Promise<{ summary: SyncRunSummary; conflicts: SyncConflict[] }> {
+  onPhase("source_listing");
   const sourceRecords = await loadSourceTree(client, config.sourceFolders);
   const sourceRootIds = config.sourceFolders.map(folder => String(folder.id));
+  onPhase("destination_listing");
   const { root: destinationRoot, records: initialDestinations } = await loadDestinationTree(config.destinationFolderId);
   const destinationById = new Map(initialDestinations.map(item => [item.id, item]));
   const destinationByPath = destinationPathIndex(initialDestinations);
+  onPhase("reconciliation");
 
   const existingMappings = await db.select().from(syncItemsTable).where(and(
     eq(syncItemsTable.destinationRootId, config.destinationFolderId),
@@ -525,6 +563,8 @@ export async function runScheduledSync(): Promise<SyncResult> {
   const lockConnection = await pool.connect();
   let locked = false;
   let client: ShufflrrClient | undefined;
+  const runId = randomUUID();
+  let phase: SyncPhase = "configuration";
   try {
     const lock = await lockConnection.query<{ locked: boolean }>(
       "SELECT pg_try_advisory_lock($1) AS locked",
@@ -547,13 +587,15 @@ export async function runScheduledSync(): Promise<SyncResult> {
 
     client = newShufflrrClient();
     const credentials = shufflrrConfig();
+    phase = "authentication";
     await client.login(credentials.email, credentials.password);
     const outcome = await performSync(db, client, {
       destinationFolderId: config.destinationFolderId,
       destinationFolderName: config.destinationFolderName,
       sourceFolders: config.sourceFolders,
-    });
+    }, nextPhase => { phase = nextPhase; });
     const status = outcome.conflicts.length ? "partial" : "success";
+    phase = "save_status";
     await saveRunState(db, {
       status,
       summary: outcome.summary,
@@ -562,11 +604,22 @@ export async function runScheduledSync(): Promise<SyncResult> {
     });
     return { skipped: false, status, summary: outcome.summary };
   } catch (error) {
+    const message = safeError(error);
+    const cause = error instanceof Error ? error.cause : undefined;
+    logger.error({
+      event: "sync_run_failed",
+      requestId: runId,
+      phase,
+      code: diagnosticCode(error),
+      causeCode: diagnosticCode(cause),
+      status: error instanceof AccessError ? error.status : undefined,
+      reason: message,
+    }, "Sync run failed.");
     await saveRunState(db, {
       status: "failed",
       summary: null,
       conflicts: [],
-      error: safeError(error),
+      error: `${message} Reference: ${runId}`,
     }).catch(() => {});
     throw error;
   } finally {

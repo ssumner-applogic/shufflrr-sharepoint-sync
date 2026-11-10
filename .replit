@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "python-base-3.13"]
+modules = ["nodejs-24", "python-base-3.13", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -23,3 +23,6 @@ timeoutMs = 20000
 
 [userenv.shared]
 SHUFFLRR_API_BASE_URL = "https://sandvine.shufflrr.com/api"
+
+[nix]
+channel = "stable-25_05"

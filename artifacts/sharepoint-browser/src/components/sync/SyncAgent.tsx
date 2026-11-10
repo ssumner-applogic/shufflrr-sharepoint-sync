@@ -381,9 +381,26 @@ export function SyncAgent({ active }: { active: boolean }) {
 
   return (
     <div className="space-y-5" data-testid="sync-agent">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="sticky top-16 z-[1] flex flex-wrap items-center justify-between gap-3 border-b bg-background py-3">
         <h2 className="text-lg font-semibold">Sync Agent</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={!canSave}
+            onClick={() => {
+              if (!destination) return;
+              saveMutation.mutate({
+                destinationFolderId: destination.id,
+                destinationFolderName: destination.name,
+                sourceFolders: [...selected.values()],
+              });
+            }}
+            className="inline-flex items-center gap-2 rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+            data-testid="button-save-sync-config"
+          >
+            {saveMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            Save settings
+          </button>
           <button
             type="button"
             onClick={() => refreshMutation.mutate()}
@@ -411,6 +428,8 @@ export function SyncAgent({ active }: { active: boolean }) {
         </div>
       </div>
 
+      {saveError && <p className="text-sm text-destructive" role="alert">{saveError}</p>}
+      {actionError && <p className="text-sm text-destructive" role="alert">{actionError}</p>}
       {refreshMutation.isError && (
         <div className="text-sm text-destructive" role="alert">{errorText(refreshMutation.error)}</div>
       )}
@@ -421,13 +440,21 @@ export function SyncAgent({ active }: { active: boolean }) {
         </div>
       )}
       {config && <ConfigStatus config={config} />}
+      {config?.enabled && <p className="text-xs text-muted-foreground">Pause sync before changing its folders.</p>}
 
       <div className={`grid gap-4 lg:grid-cols-2 ${config?.enabled ? "opacity-70" : ""}`}>
-        <section className="min-w-0 rounded-lg border bg-card">
-          <div className="border-b px-4 py-3">
+        <section className="flex h-[clamp(12.6rem,calc(70dvh_-_12.6rem),36.4rem)] min-w-0 flex-col rounded-lg border bg-card">
+          <div className="shrink-0 border-b px-4 py-3">
             <h3 className="text-sm font-medium">SharePoint Sync Folder</h3>
           </div>
-          <div className="p-3">
+          <div className="flex min-h-0 flex-1 flex-col p-3">
+            <div
+              role="region"
+              aria-label="SharePoint sync folders"
+              tabIndex={0}
+              className="min-h-0 flex-1 overflow-y-scroll overscroll-contain [scrollbar-gutter:stable] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid="sync-sharepoint-scroll"
+            >
             <button
               type="button"
               disabled={!!config?.enabled}
@@ -454,19 +481,27 @@ export function SyncAgent({ active }: { active: boolean }) {
                 onSelect={setDestination}
               />
             </div>
+            </div>
             {destination && (
-              <div className="mt-3 border-t pt-3 text-xs text-muted-foreground">
+              <div className="mt-3 shrink-0 border-t pt-3 text-xs text-muted-foreground">
                 Selected: <span className="font-medium text-foreground">{destination.name}</span>
               </div>
             )}
           </div>
         </section>
 
-        <section className="min-w-0 rounded-lg border bg-card">
-          <div className="border-b px-4 py-3">
+        <section className="flex h-[clamp(12.6rem,calc(70dvh_-_12.6rem),36.4rem)] min-w-0 flex-col rounded-lg border bg-card">
+          <div className="shrink-0 border-b px-4 py-3">
             <h3 className="text-sm font-medium">Shufflrr folders</h3>
           </div>
-          <div className="p-3">
+          <div className="flex min-h-0 flex-1 flex-col p-3">
+            <div
+              role="region"
+              aria-label="Shufflrr sync folders"
+              tabIndex={0}
+              className="min-h-0 flex-1 overflow-y-scroll overscroll-contain [scrollbar-gutter:stable] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid="sync-shufflrr-scroll"
+            >
             <ShufflrrFolderBranch
               active={active}
               level={0}
@@ -484,7 +519,8 @@ export function SyncAgent({ active }: { active: boolean }) {
               onParentLoaded={onParentLoaded}
               onSelect={onSelectSource}
             />
-            <div className="mt-3 border-t pt-3 text-xs text-muted-foreground">
+            </div>
+            <div className="mt-3 shrink-0 border-t pt-3 text-xs text-muted-foreground">
               {selected.size} folder{selected.size === 1 ? "" : "s"} selected
             </div>
           </div>
@@ -492,26 +528,6 @@ export function SyncAgent({ active }: { active: boolean }) {
       </div>
 
       {pickerError && <div className="text-sm text-destructive" role="alert">{pickerError}</div>}
-      {config?.enabled && <p className="text-xs text-muted-foreground">Pause sync before changing its folders.</p>}
-      <button
-        type="button"
-        disabled={!canSave}
-        onClick={() => {
-          if (!destination) return;
-          saveMutation.mutate({
-            destinationFolderId: destination.id,
-            destinationFolderName: destination.name,
-            sourceFolders: [...selected.values()],
-          });
-        }}
-        className="inline-flex items-center gap-2 rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
-        data-testid="button-save-sync-config"
-      >
-        {saveMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-        Save settings
-      </button>
-      {saveError && <p className="text-sm text-destructive" role="alert">{saveError}</p>}
-      {actionError && <p className="text-sm text-destructive" role="alert">{actionError}</p>}
 
       {config?.lastRunConflicts.length ? (
         <section className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4" aria-labelledby="sync-conflicts-heading">
