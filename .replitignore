@@ -4,5 +4,10 @@
 # No need to store the pnpm store twice.
 .local
 
+# Never publish local environment secrets
+.env
+.env.*
+!.env.example
+
 # Private generated reports must not be published
 /generated-artifacts/
