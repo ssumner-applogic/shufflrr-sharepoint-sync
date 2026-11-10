@@ -15,6 +15,8 @@ export * from './healthStatus';
 export * from './libraryItem';
 export * from './listItemsParams';
 export * from './listShufflrrItemsParams';
+export * from './sharePointCreateFolderInput';
+export * from './sharePointUpdateItemInput';
 export * from './shufflrrAccessReport';
 export * from './shufflrrErrorResponse';
 export * from './shufflrrItem';

@@ -29,8 +29,11 @@ import type {
   ConnectionStatus,
   FolderListing,
   HealthStatus,
+  LibraryItem,
   ListItemsParams,
   ListShufflrrItemsParams,
+  SharePointCreateFolderInput,
+  SharePointUpdateItemInput,
   ShufflrrAccessReport,
   ShufflrrErrorResponse,
   ShufflrrListing,
@@ -717,6 +720,257 @@ export function useListItems<TData = Awaited<ReturnType<typeof listItems>>, TErr
 
 
 
+
+export const getCreateSharePointFolderUrl = () => {
+
+
+
+
+  return `/api/sharepoint/folders`
+}
+
+/**
+ * @summary Create a folder in the fixed library
+ */
+export const createSharePointFolder = async (sharePointCreateFolderInput: SharePointCreateFolderInput, options?: Parameters<typeof customFetch>[1]): Promise<LibraryItem> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<LibraryItem>(getCreateSharePointFolderUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(sharePointCreateFolderInput)
+  }
+);}
+
+
+
+
+
+export const getCreateSharePointFolderMutationKey = () => ['createSharePointFolder'] as const;
+
+export const getCreateSharePointFolderMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSharePointFolder>>, TError,CreateSharePointFolderMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSharePointFolder>>, TError,CreateSharePointFolderMutationVariables, TContext> => {
+
+const mutationKey = getCreateSharePointFolderMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSharePointFolder>>, CreateSharePointFolderMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSharePointFolder(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSharePointFolderMutationResult = NonNullable<Awaited<ReturnType<typeof createSharePointFolder>>>
+    export type CreateSharePointFolderMutationBody = BodyType<SharePointCreateFolderInput>
+    export type CreateSharePointFolderMutationError = ErrorType<void>
+    export type CreateSharePointFolderMutationVariables = {data: BodyType<SharePointCreateFolderInput>}
+
+    /**
+ * @summary Create a folder in the fixed library
+ */
+export const useCreateSharePointFolder = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSharePointFolder>>, TError,CreateSharePointFolderMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createSharePointFolder>>,
+        TError,
+        CreateSharePointFolderMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateSharePointFolderMutationOptions(options), queryClient);
+    }
+
+export const getUpdateSharePointItemUrl = (itemId: string,) => {
+
+
+
+
+  return `/api/sharepoint/items/${itemId}`
+}
+
+/**
+ * @summary Rename or move an item in the fixed library
+ */
+export const updateSharePointItem = async (itemId: string,
+    sharePointUpdateItemInput: SharePointUpdateItemInput, options?: Parameters<typeof customFetch>[1]): Promise<LibraryItem> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<LibraryItem>(getUpdateSharePointItemUrl(itemId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(sharePointUpdateItemInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateSharePointItemMutationKey = () => ['updateSharePointItem'] as const;
+
+export const getUpdateSharePointItemMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSharePointItem>>, TError,UpdateSharePointItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSharePointItem>>, TError,UpdateSharePointItemMutationVariables, TContext> => {
+
+const mutationKey = getUpdateSharePointItemMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSharePointItem>>, UpdateSharePointItemMutationVariables> = (props) => {
+          const {itemId,data} = props ?? {};
+
+          return  updateSharePointItem(itemId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSharePointItemMutationResult = NonNullable<Awaited<ReturnType<typeof updateSharePointItem>>>
+    export type UpdateSharePointItemMutationBody = BodyType<SharePointUpdateItemInput>
+    export type UpdateSharePointItemMutationError = ErrorType<void>
+    export type UpdateSharePointItemMutationVariables = {itemId: string;data: BodyType<SharePointUpdateItemInput>}
+
+    /**
+ * @summary Rename or move an item in the fixed library
+ */
+export const useUpdateSharePointItem = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSharePointItem>>, TError,UpdateSharePointItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateSharePointItem>>,
+        TError,
+        UpdateSharePointItemMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateSharePointItemMutationOptions(options), queryClient);
+    }
+
+export const getDeleteSharePointItemUrl = (itemId: string,) => {
+
+
+
+
+  return `/api/sharepoint/items/${itemId}`
+}
+
+/**
+ * @summary Delete an item from the fixed library
+ */
+export const deleteSharePointItem = async (itemId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteSharePointItemUrl(itemId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteSharePointItemMutationKey = () => ['deleteSharePointItem'] as const;
+
+export const getDeleteSharePointItemMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSharePointItem>>, TError,DeleteSharePointItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSharePointItem>>, TError,DeleteSharePointItemMutationVariables, TContext> => {
+
+const mutationKey = getDeleteSharePointItemMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSharePointItem>>, DeleteSharePointItemMutationVariables> = (props) => {
+          const {itemId} = props ?? {};
+
+          return  deleteSharePointItem(itemId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSharePointItemMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSharePointItem>>>
+
+    export type DeleteSharePointItemMutationError = ErrorType<void>
+    export type DeleteSharePointItemMutationVariables = {itemId: string}
+
+    /**
+ * @summary Delete an item from the fixed library
+ */
+export const useDeleteSharePointItem = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSharePointItem>>, TError,DeleteSharePointItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSharePointItem>>,
+        TError,
+        DeleteSharePointItemMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteSharePointItemMutationOptions(options), queryClient);
+    }
 
 export const getHealthCheckUrl = () => {
 

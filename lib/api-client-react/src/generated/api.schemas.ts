@@ -82,6 +82,32 @@ export interface LibraryItem {
   webUrl: string;
 }
 
+export interface SharePointCreateFolderInput {
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  name: string;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  parentId?: string | null;
+}
+
+export interface SharePointUpdateItemInput {
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  name?: string;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  parentId?: string | null;
+}
+
 export interface FolderListing {
   items: LibraryItem[];
   nextCursor?: string;

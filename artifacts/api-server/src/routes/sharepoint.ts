@@ -1,7 +1,28 @@
 import { Router, type IRouter, type RequestHandler } from "express";
 import { getAuth } from "@clerk/express";
-import { GetConnectionStatusResponse, TestConnectionResponse, ListItemsQueryParams, ListItemsResponse } from "@workspace/api-zod";
-import { libraryUrl, missingCredentials, testAccess, listFolder, normalizeError, advice } from "../lib/sharepoint";
+import {
+  CreateSharePointFolderBody,
+  CreateSharePointFolderResponse,
+  DeleteSharePointItemParams,
+  GetConnectionStatusResponse,
+  ListItemsQueryParams,
+  ListItemsResponse,
+  TestConnectionResponse,
+  UpdateSharePointItemBody,
+  UpdateSharePointItemParams,
+  UpdateSharePointItemResponse,
+} from "@workspace/api-zod";
+import {
+  advice,
+  createSharePointFolder,
+  deleteSharePointItem,
+  libraryUrl,
+  listFolder,
+  missingCredentials,
+  normalizeError,
+  testAccess,
+  updateSharePointItem,
+} from "../lib/sharepoint";
 
 const router: IRouter = Router();
 const requireSignedIn: RequestHandler = (req, res, next) => {
@@ -36,6 +57,56 @@ router.get("/sharepoint/status", (_req, res) => {
 router.post("/sharepoint/test", async (_req, res): Promise<void> => {
   res.json(TestConnectionResponse.parse(await testAccess()));
 });
+
+function operationError(res: Parameters<RequestHandler>[1], err: unknown): void {
+  const e = normalizeError(err);
+  const status = [400, 401, 403, 404, 409].includes(e.status) ? e.status : 502;
+  res.status(status).json({ error: e.message, code: e.code, advice: advice(e) });
+}
+
+router.post("/sharepoint/folders", async (req, res): Promise<void> => {
+  const parsed = CreateSharePointFolderBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid folder name or destination." });
+    return;
+  }
+  try {
+    const item = await createSharePointFolder(parsed.data.name, parsed.data.parentId);
+    res.status(201).json(CreateSharePointFolderResponse.parse(item));
+  } catch (err) {
+    operationError(res, err);
+  }
+});
+
+router.patch("/sharepoint/items/:itemId", async (req, res): Promise<void> => {
+  const params = UpdateSharePointItemParams.safeParse(req.params);
+  const body = UpdateSharePointItemBody.safeParse(req.body);
+  if (!params.success || !body.success || (!body.data.name && body.data.parentId === undefined)) {
+    res.status(400).json({ error: "Provide a valid item name or destination folder." });
+    return;
+  }
+  try {
+    const item = await updateSharePointItem(params.data.itemId, body.data);
+    res.json(UpdateSharePointItemResponse.parse(item));
+  } catch (err) {
+    operationError(res, err);
+  }
+});
+
+router.delete("/sharepoint/items/:itemId", async (req, res): Promise<void> => {
+  const params = DeleteSharePointItemParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid SharePoint item." });
+    return;
+  }
+  try {
+    await deleteSharePointItem(params.data.itemId);
+    res.sendStatus(204);
+  } catch (err) {
+    operationError(res, err);
+  }
+});
+
 router.get("/sharepoint/items", async (req, res): Promise<void> => {
   const query = ListItemsQueryParams.safeParse(req.query);
   if (!query.success || (query.data.folderId?.length || 0) > 500 || (query.data.cursor?.length || 0) > 20000) {

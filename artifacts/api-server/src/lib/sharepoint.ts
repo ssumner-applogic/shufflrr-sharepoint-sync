@@ -6,10 +6,11 @@ const graphRoot = "https://graph.microsoft.com/v1.0";
 interface GraphItem {
   id: string;
   name: string;
-  webUrl: string;
+  webUrl?: string;
   folder?: unknown;
   size?: number;
   lastModifiedDateTime?: string;
+  parentReference?: { id?: string };
 }
 interface GraphPage { value: GraphItem[]; "@odata.nextLink"?: string }
 const keys = ["MICROSOFT_TENANT_ID", "MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET"] as const;
@@ -157,6 +158,138 @@ export async function listFolder(folderId?: string, cursor?: string): Promise<Fo
     })),
     ...(page["@odata.nextLink"] ? { nextCursor: cursorFor(page["@odata.nextLink"], driveId) } : {}),
   };
+}
+
+function validateItemName(name: string): void {
+  if (
+    typeof name !== "string" ||
+    name.length < 1 ||
+    name.length > 255 ||
+    !name.trim() ||
+    /[\\/\u0000-\u001f\u007f]/.test(name)
+  ) {
+    throw new AccessError("InvalidName", "Enter a valid SharePoint name (1–255 characters, without slashes or control characters).", 400);
+  }
+}
+
+function itemResult(item: GraphItem) {
+  return {
+    id: item.id,
+    name: item.name,
+    isFolder: !!item.folder,
+    size: item.size || 0,
+    modifiedAt: item.lastModifiedDateTime || "",
+    webUrl: item.webUrl || "",
+  };
+}
+
+async function getDriveItem(driveId: string, itemId: string): Promise<GraphItem> {
+  return graph<GraphItem>(
+    `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}?$select=id,name,folder,size,lastModifiedDateTime,webUrl,parentReference`,
+  );
+}
+
+async function getRootId(driveId: string): Promise<string> {
+  const root = await graph<{ id: string }>(`/drives/${encodeURIComponent(driveId)}/root?$select=id`);
+  return root.id;
+}
+
+export async function createSharePointFolder(name: string, parentId?: string | null) {
+  validateItemName(name);
+  const { driveId } = await location();
+  const rootId = await getRootId(driveId);
+  const resolvedParentId = parentId ?? rootId;
+  const parent = resolvedParentId === rootId
+    ? await getDriveItem(driveId, rootId)
+    : await getDriveItem(driveId, resolvedParentId);
+  if (!parent.folder) {
+    throw new AccessError("InvalidDestination", "Choose a SharePoint folder as the destination.", 400);
+  }
+
+  const created = await graph<GraphItem>(
+    `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(resolvedParentId)}/children`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        folder: {},
+        "@microsoft.graph.conflictBehavior": "fail",
+      }),
+    },
+  );
+  return itemResult(created);
+}
+
+export async function updateSharePointItem(
+  itemId: string,
+  update: { name?: string; parentId?: string | null },
+) {
+  if (update.name !== undefined) validateItemName(update.name);
+  if (update.name === undefined && update.parentId === undefined) {
+    throw new AccessError("InvalidUpdate", "Provide a new name or destination folder.", 400);
+  }
+
+  const { driveId } = await location();
+  const rootId = await getRootId(driveId);
+  const item = await getDriveItem(driveId, itemId);
+  if (item.id === rootId || !item.parentReference?.id) {
+    throw new AccessError("ProtectedRoot", "The library root cannot be renamed or moved.", 400);
+  }
+
+  const body: { name?: string; parentReference?: { id: string } } = {};
+  if (update.name !== undefined) body.name = update.name;
+  if (update.parentId !== undefined) {
+    const destinationId = update.parentId ?? rootId;
+    if (destinationId === item.parentReference.id && update.name === undefined) {
+      return itemResult(item);
+    }
+    const destination = destinationId === rootId
+      ? await getDriveItem(driveId, rootId)
+      : await getDriveItem(driveId, destinationId);
+    if (!destination.folder) {
+      throw new AccessError("InvalidDestination", "Choose a SharePoint folder as the destination.", 400);
+    }
+
+    if (item.folder) {
+      let currentId: string | undefined = destinationId;
+      let reachedRoot = false;
+      for (let depth = 0; currentId && depth <= 100; depth++) {
+        if (currentId === item.id) {
+          throw new AccessError("InvalidDestination", "A folder cannot be moved into itself or one of its subfolders.", 400);
+        }
+        if (currentId === rootId) {
+          reachedRoot = true;
+          break;
+        }
+        const ancestor = await getDriveItem(driveId, currentId);
+        currentId = ancestor.parentReference?.id;
+        if (!currentId) {
+          throw new AccessError("InvalidDestination", "The destination folder hierarchy could not be verified.", 400);
+        }
+      }
+      if (!reachedRoot) {
+        throw new AccessError("InvalidDestination", "The destination folder hierarchy could not be verified.", 400);
+      }
+    }
+    body.parentReference = { id: destinationId };
+  }
+
+  const updated = await graph<GraphItem>(
+    `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}`,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  return itemResult(updated);
+}
+
+export async function deleteSharePointItem(itemId: string): Promise<void> {
+  const { driveId } = await location();
+  const rootId = await getRootId(driveId);
+  const item = await getDriveItem(driveId, itemId);
+  if (item.id === rootId || !item.parentReference?.id) {
+    throw new AccessError("ProtectedRoot", "The library root cannot be deleted.", 400);
+  }
+  await graph<void>(`/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}`, { method: "DELETE" });
 }
 
 async function findWriteProbe(driveId: string, fileName: string): Promise<string | undefined> {

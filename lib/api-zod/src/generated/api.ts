@@ -130,6 +130,76 @@ export const ListItemsResponse = zod.object({
 
 
 /**
+ * @summary Create a folder in the fixed library
+ */
+export const createSharePointFolderBodyNameMax = 255;
+
+export const createSharePointFolderBodyParentIdMax = 500;
+
+
+
+export const CreateSharePointFolderBody = zod.object({
+  "name": zod.string().min(1).max(createSharePointFolderBodyNameMax),
+  "parentId": zod.string().max(createSharePointFolderBodyParentIdMax).nullish()
+})
+
+export const CreateSharePointFolderResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "isFolder": zod.boolean(),
+  "size": zod.number(),
+  "modifiedAt": zod.string(),
+  "webUrl": zod.string()
+})
+
+
+/**
+ * @summary Rename or move an item in the fixed library
+ */
+export const updateSharePointItemPathItemIdMax = 500;
+
+
+
+export const UpdateSharePointItemParams = zod.object({
+  "itemId": zod.coerce.string().min(1).max(updateSharePointItemPathItemIdMax)
+})
+
+export const updateSharePointItemBodyNameMax = 255;
+
+export const updateSharePointItemBodyParentIdMax = 500;
+
+
+
+export const UpdateSharePointItemBody = zod.object({
+  "name": zod.string().min(1).max(updateSharePointItemBodyNameMax).optional(),
+  "parentId": zod.string().max(updateSharePointItemBodyParentIdMax).nullish()
+})
+
+export const UpdateSharePointItemResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "isFolder": zod.boolean(),
+  "size": zod.number(),
+  "modifiedAt": zod.string(),
+  "webUrl": zod.string()
+})
+
+
+/**
+ * @summary Delete an item from the fixed library
+ */
+export const deleteSharePointItemPathItemIdMax = 500;
+
+
+
+export const DeleteSharePointItemParams = zod.object({
+  "itemId": zod.coerce.string().min(1).max(deleteSharePointItemPathItemIdMax)
+})
+
+export const DeleteSharePointItemResponse = zod.void()
+
+
+/**
  * Returns server health status
  * @summary Health check
  */

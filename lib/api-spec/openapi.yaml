@@ -128,6 +128,66 @@ paths:
           description: Invalid input
         "502":
           description: Access failed
+  /sharepoint/folders:
+    post:
+      operationId: createSharePointFolder
+      summary: Create a folder in the fixed library
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SharePointCreateFolderInput" }
+      responses:
+        "201":
+          description: Created folder
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LibraryItem" }
+        "400": { description: Invalid folder name or destination }
+        "401": { description: Sign-in required }
+        "403": { description: SharePoint denied the operation }
+        "409": { description: An item with that name already exists }
+        "502": { description: SharePoint request failed }
+  /sharepoint/items/{itemId}:
+    patch:
+      operationId: updateSharePointItem
+      summary: Rename or move an item in the fixed library
+      parameters:
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 500 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SharePointUpdateItemInput" }
+      responses:
+        "200":
+          description: Updated item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LibraryItem" }
+        "400": { description: Invalid update or destination }
+        "401": { description: Sign-in required }
+        "403": { description: SharePoint denied the operation }
+        "404": { description: Item not found }
+        "409": { description: An item with that name already exists }
+        "502": { description: SharePoint request failed }
+    delete:
+      operationId: deleteSharePointItem
+      summary: Delete an item from the fixed library
+      parameters:
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "204": { description: Item deleted }
+        "401": { description: Sign-in required }
+        "403": { description: SharePoint denied the operation }
+        "404": { description: Item not found }
+        "502": { description: SharePoint request failed }
   /healthz:
     get:
       operationId: healthCheck
@@ -233,6 +293,18 @@ components:
         size: { type: number }
         modifiedAt: { type: string }
         webUrl: { type: string }
+    SharePointCreateFolderInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 255 }
+        parentId: { type: ["string", "null"], maxLength: 500 }
+    SharePointUpdateItemInput:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 255 }
+        parentId: { type: ["string", "null"], maxLength: 500 }
     FolderListing:
       type: object
       required: [items]

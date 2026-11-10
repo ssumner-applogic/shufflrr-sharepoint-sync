@@ -38,9 +38,11 @@ type FileLink = { href: string; download?: string; external?: boolean };
 
 export function TreeItem({
   treeKey, level, name, isFolder, expanded, onToggle, size, modifiedAt, fileLink, testId, children,
+  selected, onSelect, selectionDisabled,
 }: {
   treeKey: string; level: number; name: string; isFolder: boolean; expanded: boolean;
   onToggle: (key: string) => void; size?: number; modifiedAt: string; fileLink?: FileLink; testId: string; children?: ReactNode;
+  selected?: boolean; onSelect?: (selected: boolean) => void; selectionDisabled?: boolean;
 }) {
   const kind = isFolder ? "folder" : "file";
   return (
@@ -59,12 +61,26 @@ export function TreeItem({
         style={indentStyle(level)}
         onClick={(event) => {
           event.currentTarget.parentElement?.focus();
+          if ((event.target as Element).closest("[data-tree-action]")) return;
           if (isFolder) onToggle(treeKey);
-          else if (fileLink && !(event.target as Element).closest("[data-tree-action]"))
+          else if (fileLink)
             event.currentTarget.querySelector<HTMLAnchorElement>("[data-tree-action]")?.click();
         }}
         title={name}
       >
+        {onSelect && (
+          <input
+            type="checkbox"
+            checked={!!selected}
+            disabled={selectionDisabled}
+            aria-label={`Select ${name} ${kind}`}
+            data-tree-action
+            data-testid={`select-${testId}`}
+            className="size-4 shrink-0 accent-primary disabled:cursor-not-allowed"
+            onChange={(event) => onSelect(event.currentTarget.checked)}
+            onClick={(event) => event.stopPropagation()}
+          />
+        )}
         <span className="grid size-4 shrink-0 place-items-center text-muted-foreground" aria-hidden="true">
           {isFolder && <ChevronRight className={`size-3.5 transition-transform ${expanded ? "rotate-90" : ""}`} />}
         </span>
