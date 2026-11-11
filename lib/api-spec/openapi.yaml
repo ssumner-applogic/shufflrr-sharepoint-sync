@@ -431,7 +431,7 @@ components:
         name: { type: string, minLength: 1, maxLength: 255 }
     SyncFileFailure:
       type: object
-      required: [id, name, path, reason, lastFailedAt, retryRequestedAt, fileUrl, parentFolderUrl, canRetry]
+      required: [id, name, path, reason, lastFailedAt, retryRequestedAt, fileUrl, parentFolderUrl, canRetry, issueCount, latestStatus, issues]
       properties:
         id: { type: integer }
         name: { type: string }
@@ -442,6 +442,18 @@ components:
         fileUrl: { type: string, format: uri }
         parentFolderUrl: { type: string, format: uri }
         canRetry: { type: boolean }
+        issueCount: { type: integer, minimum: 0 }
+        latestStatus: { type: string, enum: [failed, conflict, skipped] }
+        issues:
+          type: array
+          items: { $ref: "#/components/schemas/SyncFileFailureIssue" }
+    SyncFileFailureIssue:
+      type: object
+      required: [status, reason, occurredAt]
+      properties:
+        status: { type: string, enum: [failed, conflict, skipped] }
+        reason: { type: string }
+        occurredAt: { type: string, format: date-time }
     SyncFolderExclusion:
       type: object
       required: [id, name, rootId, ancestorIds]

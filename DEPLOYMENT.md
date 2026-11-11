@@ -12,7 +12,7 @@ The server now retains a separate Shufflrr connection per verified Clerk app ses
 
 ## Large-file and failure-banner release
 
-Pause sync for rollout, run `pnpm db:migrate` on the intended Neon database, then deploy the updated worker and matching API/frontend. Migration `0005_sync_file_failures` adds only persistent file-failure/dismissal/retry metadata and indexes; it does not change existing sync settings, mappings or provider files. No new variables are required. The worker must be running to process targeted retries, including retries requested while automatic sync is paused.
+Pause sync for rollout, run `pnpm db:migrate` on the intended Neon database, then deploy the updated worker and matching API/frontend. Migrations `0005_sync_file_failures` and `0006_sync_file_failure_issues` add only persistent file-failure metadata and per-run issue history; they do not change existing sync settings, mappings or provider files. Issue history follows the latest-50-run retention policy. No new variables are required. The worker must be running to process targeted retries, including retries requested while automatic sync is paused.
 
 The file limit is 300,000,000 bytes. Nonempty files use Graph upload sessions with sequential 5 MiB fragments, bounded stream memory, validated final size, and best-effort session cancellation. Signed upload capability URLs are server-only, never logged or sent to the browser, and upload-fragment requests never carry the Graph Authorization header. Provider cooldowns and the existing cross-process advisory lock remain authoritative. Interrupted queued retries survive a worker restart; retry mode cannot perform mirror deletions. Dismissing a banner hides the notice without canceling the queued job or changing automatic sync.
 

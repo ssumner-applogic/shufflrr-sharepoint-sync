@@ -4,7 +4,7 @@
   "license": "MIT",
   "packageManager": "pnpm@10.26.1",
   "scripts": {
-    "test:sync-selection": "pnpm --filter @workspace/scripts exec tsx --test ../artifacts/sharepoint-browser/src/components/sync/folder-selection.test.ts",
+    "test:sync-selection": "pnpm --filter @workspace/scripts exec tsx --test ../artifacts/sharepoint-browser/src/components/sync/folder-selection.test.ts ../artifacts/sharepoint-browser/src/components/sync/failureGrouping.test.ts",
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
     "build": "pnpm run typecheck && pnpm --filter @workspace/sharepoint-browser run build && pnpm --filter @workspace/api-server run build",
     "start": "SERVE_FRONTEND=true node --enable-source-maps artifacts/api-server/dist/index.mjs",

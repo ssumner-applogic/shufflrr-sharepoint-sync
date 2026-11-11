@@ -1,7 +1,82 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ExternalLink, FolderOpen, RefreshCw, X } from "lucide-react";
-import { dismissSyncFileFailure, getSyncFailures, getGetSyncFailuresQueryKey, retrySyncFile } from "@workspace/api-client-react";
+import {
+  dismissSyncFileFailure,
+  getSyncFailures,
+  getGetSyncFailuresQueryKey,
+  retrySyncFile,
+  type SyncFileFailure,
+} from "@workspace/api-client-react";
+import { groupSyncFailures } from "./failureGrouping";
+
+function FailureItem({ file, compact, retry, dismiss, retryPending, dismissPending, queued }: {
+  file: SyncFileFailure;
+  compact?: boolean;
+  retry: (id: number) => void;
+  dismiss: (id: number) => void;
+  retryPending: boolean;
+  dismissPending: boolean;
+  queued?: { id: number; text: string };
+}) {
+  const showHistory = file.issueCount > 1 && file.issues.length > 0;
+
+  return <div role="alert"
+    className={`flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 ${compact ? "p-2" : "p-3"}`}
+    data-testid={`sync-failure-${file.id}`}>
+    <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
+    <div className="min-w-0 flex-1">
+      <div className="break-all text-sm font-medium">{file.name}</div>
+      <div className="break-all text-xs text-muted-foreground">{file.path}</div>
+      <p className="mt-1 text-sm text-destructive">{file.reason}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <a href={file.fileUrl} target="_blank" rel="noopener noreferrer" data-testid={`link-shufflrr-file-${file.id}`}
+          className="inline-flex items-center gap-1 underline">
+          <ExternalLink className="size-3" aria-hidden="true" />Open file in Shufflrr
+        </a>
+        <a href={file.parentFolderUrl} target="_blank" rel="noopener noreferrer" data-testid={`link-shufflrr-parent-${file.id}`}
+          className="inline-flex items-center gap-1 underline">
+          <FolderOpen className="size-3" aria-hidden="true" />Open parent folder in Shufflrr
+        </a>
+        <button type="button" data-testid={`button-retry-sync-file-${file.id}`}
+          disabled={!file.canRetry || retryPending}
+          title={file.retryRequestedAt ? "Retry queued; provider cooldowns are respected."
+            : !file.canRetry ? "Wait for the active run to finish, or restore this file to the saved sync scope." : "Retry only this file; no mirror deletions."}
+          onClick={() => retry(file.id)}
+          className="inline-flex items-center gap-1 font-medium disabled:opacity-50">
+          <RefreshCw className={`size-3 ${retryPending ? "animate-spin" : ""}`} aria-hidden="true" />
+          {file.retryRequestedAt ? "Retry queued" : "Try again"}
+        </button>
+        <span className="text-muted-foreground">
+          {file.latestStatus === "skipped" ? "Last not attempted" : "Last issue"} {new Date(file.lastFailedAt).toLocaleString()}
+        </span>
+      </div>
+      {file.issueCount === 0 && <p className="mt-2 text-xs text-muted-foreground">
+        Detailed issue history starts with new runs; earlier run details are in the Activity log.
+      </p>}
+      {showHistory && <details className="mt-2 rounded border bg-background/60 p-2 text-xs">
+        <summary className="cursor-pointer font-medium">{file.issueCount} recorded issues</summary>
+        <ol className="mt-2 space-y-2">
+          {file.issues.map((issue, index) => <li key={`${issue.occurredAt}-${index}`} className="border-l-2 pl-2">
+            <span className="font-medium capitalize">{issue.status === "failed" ? "Failed" : issue.status}</span>
+            <span className="text-muted-foreground"> · {new Date(issue.occurredAt).toLocaleString()}</span>
+            <div className="mt-0.5">{issue.reason}</div>
+          </li>)}
+          {file.issueCount > file.issues.length && <li className="text-muted-foreground">
+            Showing the {file.issues.length} most recent issues. Older run details are in the Activity log.
+          </li>}
+        </ol>
+      </details>}
+      {queued?.id === file.id && <p className="mt-2 text-xs" role="status">{queued.text}</p>}
+    </div>
+    <button type="button" data-testid={`button-dismiss-sync-failure-${file.id}`}
+      className="shrink-0 rounded p-1 hover:bg-destructive/10"
+      aria-label={`Dismiss failure for ${file.name}`} disabled={dismissPending}
+      onClick={() => dismiss(file.id)}>
+      <X className="size-4" />
+    </button>
+  </div>;
+}
 
 export function SyncFailureBanners({ active }: { active: boolean }) {
   const client = useQueryClient();
@@ -38,40 +113,30 @@ export function SyncFailureBanners({ active }: { active: boolean }) {
   const data = query.data;
   if (!data || (!data.total && !retry.error && !dismiss.error)) return null;
   const error = retry.error ?? dismiss.error;
+  const { notAttempted: skipped, needsAction } = groupSyncFailures(data.failures);
+  const retryFile = (id: number) => { dismiss.reset(); retry.mutate(id); };
+  const dismissFile = (id: number) => { retry.reset(); dismiss.mutate(id); };
+
   return <section className="space-y-2" aria-label="Files needing attention" data-testid="sync-file-failures">
     <h3 className="text-sm font-medium">{data.total} file{data.total === 1 ? "" : "s"} needing attention</h3>
-    {data.failures.map(file => <div key={file.id} role="alert"
-      className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3" data-testid={`sync-failure-${file.id}`}>
-      <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
-      <div className="min-w-0 flex-1">
-        <div className="break-all text-sm font-medium">{file.name}</div>
-        <div className="break-all text-xs text-muted-foreground">{file.path}</div>
-        <p className="mt-1 text-sm text-destructive">{file.reason}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-          <a href={file.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
-            <ExternalLink className="size-3" aria-hidden="true" />Open file in Shufflrr
-          </a>
-          <a href={file.parentFolderUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
-            <FolderOpen className="size-3" aria-hidden="true" />Open parent folder in Shufflrr
-          </a>
-          <button type="button" disabled={!file.canRetry || retry.isPending}
-            title={file.retryRequestedAt ? "Retry queued; provider cooldowns are respected."
-              : !file.canRetry ? "Wait for the active run to finish, or restore this file to the saved sync scope." : "Retry only this file; no mirror deletions."}
-            onClick={() => { dismiss.reset(); retry.mutate(file.id); }}
-            className="inline-flex items-center gap-1 font-medium disabled:opacity-50">
-            <RefreshCw className={`size-3 ${retry.isPending && retry.variables === file.id ? "animate-spin" : ""}`} aria-hidden="true" />
-            {file.retryRequestedAt ? "Retry queued" : "Try again"}
-          </button>
-          <span className="text-muted-foreground">Last failure {new Date(file.lastFailedAt).toLocaleString()}</span>
-        </div>
-        {queued?.id === file.id && <p className="mt-2 text-xs" role="status">{queued.text}</p>}
+    <p className="text-xs text-muted-foreground">
+      Showing {data.failures.length}: {needsAction.length} with issues{skipped.length > 0 && ` · ${skipped.length} not attempted`}
+    </p>
+    {needsAction.map(file => <FailureItem key={file.id} file={file} retry={retryFile} dismiss={dismissFile}
+      retryPending={retry.isPending && retry.variables === file.id} dismissPending={dismiss.isPending} queued={queued} />)}
+    {skipped.length > 0 && <details className="rounded-lg border border-muted-foreground/25 bg-muted/20 p-3"
+      data-testid="sync-not-attempted-group">
+      <summary className="cursor-pointer text-sm font-medium">
+        {skipped.length} file{skipped.length === 1 ? "" : "s"} not attempted in the latest run
+      </summary>
+      <p className="mt-2 text-xs text-muted-foreground">
+        These files were skipped after the run stopped. Expand a file to review its recorded issue history.
+      </p>
+      <div className="mt-2 space-y-2">
+        {skipped.map(file => <FailureItem key={file.id} file={file} compact retry={retryFile} dismiss={dismissFile}
+          retryPending={retry.isPending && retry.variables === file.id} dismissPending={dismiss.isPending} queued={queued} />)}
       </div>
-      <button type="button" className="shrink-0 rounded p-1 hover:bg-destructive/10"
-        aria-label={`Dismiss failure for ${file.name}`} disabled={dismiss.isPending}
-        onClick={() => { retry.reset(); dismiss.mutate(file.id); }}>
-        <X className="size-4" />
-      </button>
-    </div>)}
+    </details>}
     {error && <p className="text-sm text-destructive" role="alert">{error instanceof Error ? error.message : "The action failed. Try again."}</p>}
     {(after !== undefined || data.nextAfter !== null) && <div className="flex justify-end gap-3 text-xs">
       <button disabled={!previous.length || query.isFetching} onClick={() => {

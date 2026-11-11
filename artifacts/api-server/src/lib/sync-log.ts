@@ -74,7 +74,7 @@ export class SyncRunJournal implements SyncReporter {
       // Skipped enumerated files also need an actionable notice (e.g. a blocked parent or earlier failure).
       // Intentionally excluded copies have no sourceFile metadata and never enter this branch.
       if (event.status === "failed" || event.status === "conflict" || event.status === "skipped")
-        await this.fileFailures?.fail(sourceFile, event.path, event.message);
+        await this.fileFailures?.fail(sourceFile, event.path, event.message, event.status, this.runId);
       else if (["copied", "updated", "unchanged", "moved"].includes(event.status))
         await this.fileFailures?.resolve(sourceFile);
     }

@@ -260,6 +260,10 @@ export const GetSyncFailuresQueryParams = zod.object({
   "limit": zod.coerce.number().int().min(1).max(getSyncFailuresQueryLimitMax).default(getSyncFailuresQueryLimitDefault)
 })
 
+export const getSyncFailuresResponseFailuresItemIssueCountMin = 0;
+
+
+
 export const GetSyncFailuresResponse = zod.object({
   "failures": zod.array(zod.object({
   "id": zod.number().int(),
@@ -270,7 +274,14 @@ export const GetSyncFailuresResponse = zod.object({
   "retryRequestedAt": zod.coerce.date().nullable(),
   "fileUrl": zod.string().url(),
   "parentFolderUrl": zod.string().url(),
-  "canRetry": zod.boolean()
+  "canRetry": zod.boolean(),
+  "issueCount": zod.number().int().min(getSyncFailuresResponseFailuresItemIssueCountMin),
+  "latestStatus": zod.enum(['failed', 'conflict', 'skipped']),
+  "issues": zod.array(zod.object({
+  "status": zod.enum(['failed', 'conflict', 'skipped']),
+  "reason": zod.string(),
+  "occurredAt": zod.coerce.date()
+}))
 })),
   "total": zod.number().int(),
   "nextAfter": zod.number().int().nullable()

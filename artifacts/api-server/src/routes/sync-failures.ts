@@ -1,6 +1,10 @@
-import { and, count, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { Router, type Request, type Response } from "express";
-import { syncConfigTable, syncFileFailuresTable as failures } from "@workspace/db/schema";
+import {
+  syncConfigTable,
+  syncFileFailureIssuesTable as issues,
+  syncFileFailuresTable as failures,
+} from "@workspace/db/schema";
 import { GetSyncFailuresQueryParams, DismissSyncFileFailureParams, RetrySyncFileParams } from "@workspace/api-zod";
 import { shufflrrFailureLinks } from "../lib/sync-file-failures";
 import { SYNC_LOCK_ID } from "../lib/sync-runner";
@@ -26,14 +30,33 @@ export function syncFailureRoutes(fail: (req: Request, res: Response, error: unk
       const rows = await db.select().from(failures).where(and(visible, gt(failures.id, parsed.data.after ?? 0)))
         .orderBy(failures.id).limit(limit + 1);
       const page = rows.slice(0, limit);
+      const issueRows = page.length
+        ? await db.select().from(issues).where(inArray(issues.failureId, page.map(row => row.id)))
+          .orderBy(desc(issues.occurredAt), desc(issues.id))
+        : [];
+      const issuesByFailure = new Map<number, typeof issueRows>();
+      for (const issue of issueRows) {
+        const current = issuesByFailure.get(issue.failureId) ?? [];
+        current.push(issue);
+        issuesByFailure.set(issue.failureId, current);
+      }
       res.json({ total: total.value, nextAfter: rows.length > limit ? page.at(-1)!.id : null,
-        failures: page.map(row => ({
-          id: row.id, name: row.name, path: row.path, reason: row.reason,
-          lastFailedAt: row.lastFailedAt.toISOString(),
-          retryRequestedAt: row.retryRequestedAt?.toISOString() ?? null,
-          canRetry: inScope(row, config) && !row.retryRequestedAt && config?.lastRunStatus !== "running",
-          ...shufflrrFailureLinks(row.portalOrigin, row.parentId, row.sourceId, row.fileHistoryId),
-        })) });
+        failures: page.map(row => {
+          const fileIssues = issuesByFailure.get(row.id) ?? [];
+          return {
+            id: row.id, name: row.name, path: row.path, reason: row.reason,
+            lastFailedAt: row.lastFailedAt.toISOString(),
+            retryRequestedAt: row.retryRequestedAt?.toISOString() ?? null,
+            canRetry: inScope(row, config) && !row.retryRequestedAt && config?.lastRunStatus !== "running",
+            issueCount: fileIssues.length,
+            latestStatus: fileIssues[0]?.status ??
+              (row.reason.startsWith("Not attempted because this run stopped after an error.") ? "skipped" : "failed"),
+            issues: fileIssues.slice(0, 10).map(issue => ({
+              status: issue.status, reason: issue.reason, occurredAt: issue.occurredAt.toISOString(),
+            })),
+            ...shufflrrFailureLinks(row.portalOrigin, row.parentId, row.sourceId, row.fileHistoryId),
+          };
+        }) });
     } catch (error) { fail(req, res, error); }
   });
   router.put("/:id/dismiss", async (req, res) => {

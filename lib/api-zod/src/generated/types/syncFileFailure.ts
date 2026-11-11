@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { SyncFileFailureIssue } from './syncFileFailureIssue';
+import type { SyncFileFailureLatestStatus } from './syncFileFailureLatestStatus';
 
 export interface SyncFileFailure {
   id: number;
@@ -17,4 +19,8 @@ export interface SyncFileFailure {
   fileUrl: string;
   parentFolderUrl: string;
   canRetry: boolean;
+  /** @minimum 0 */
+  issueCount: number;
+  latestStatus: SyncFileFailureLatestStatus;
+  issues: SyncFileFailureIssue[];
 }

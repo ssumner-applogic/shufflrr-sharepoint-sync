@@ -1,12 +1,17 @@
 import { createHash } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { syncFileFailuresTable as failures, type SyncFileReference } from "@workspace/db/schema";
+import {
+  syncFileFailuresTable as failures,
+  syncFileFailureIssuesTable as issues,
+  type SyncFileIssueStatus,
+  type SyncFileReference,
+} from "@workspace/db/schema";
 
 export class SyncFileFailureStore {
   private unresolvedKeys?: Set<string>;
   constructor(private db: typeof import("@workspace/db")["db"], private destinationRootId: string,
     private portalOrigin: string) {}
-  async fail(file: SyncFileReference, path: string, reason: string) {
+  async fail(file: SyncFileReference, path: string, reason: string, status: SyncFileIssueStatus, runId: string) {
     const fingerprint = createHash("sha256").update(JSON.stringify([
       file.modifiedAt, file.size, file.parentId, path, reason,
     ])).digest("hex");
@@ -14,12 +19,14 @@ export class SyncFileFailureStore {
       ancestorIds: file.ancestorIds, destinationRootId: this.destinationRootId,
       portalOrigin: this.portalOrigin, fileHistoryId: file.fileHistoryId ?? null,
       name: file.name, path, reason, fingerprint };
-    await this.db.insert(failures).values(value).onConflictDoUpdate({
+    const [failure] = await this.db.insert(failures).values(value).onConflictDoUpdate({
       target: [failures.sourceId, failures.sourceRootId, failures.destinationRootId],
       set: { ...value, lastFailedAt: new Date(), resolvedAt: null,
         dismissedAt: sql`case when ${failures.fingerprint} = ${fingerprint} and ${failures.reason} = ${reason} and ${failures.resolvedAt} is null
           then ${failures.dismissedAt} else null end` },
-    });
+    }).returning({ id: failures.id });
+    if (!failure) throw new Error("Could not persist the file failure.");
+    await this.db.insert(issues).values({ failureId: failure.id, runId, status, reason });
     this.unresolvedKeys?.add(`${file.rootId}:${file.id}`);
   }
   async resolve(file: SyncFileReference) {

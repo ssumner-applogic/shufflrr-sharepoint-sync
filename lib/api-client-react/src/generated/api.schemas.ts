@@ -103,6 +103,30 @@ export interface SyncSourceFolder {
   name: string;
 }
 
+export type SyncFileFailureLatestStatus = typeof SyncFileFailureLatestStatus[keyof typeof SyncFileFailureLatestStatus];
+
+
+export const SyncFileFailureLatestStatus = {
+  failed: 'failed',
+  conflict: 'conflict',
+  skipped: 'skipped',
+} as const;
+
+export type SyncFileFailureIssueStatus = typeof SyncFileFailureIssueStatus[keyof typeof SyncFileFailureIssueStatus];
+
+
+export const SyncFileFailureIssueStatus = {
+  failed: 'failed',
+  conflict: 'conflict',
+  skipped: 'skipped',
+} as const;
+
+export interface SyncFileFailureIssue {
+  status: SyncFileFailureIssueStatus;
+  reason: string;
+  occurredAt: string;
+}
+
 export interface SyncFileFailure {
   id: number;
   name: string;
@@ -114,6 +138,10 @@ export interface SyncFileFailure {
   fileUrl: string;
   parentFolderUrl: string;
   canRetry: boolean;
+  /** @minimum 0 */
+  issueCount: number;
+  latestStatus: SyncFileFailureLatestStatus;
+  issues: SyncFileFailureIssue[];
 }
 
 export interface SyncFolderExclusion {

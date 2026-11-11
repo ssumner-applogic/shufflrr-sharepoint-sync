@@ -87,15 +87,19 @@ test("Shufflrr links use portal-native routes, including generic file-history de
   assert.match(shufflrrFailureLinks("https://example.shufflrr.com", 12, 34).fileUrl, /file=34/);
 });
 test("unattempted source files receive notices, while intentional exclusions do not", async () => {
-  const reasons: string[] = [];
+  const notices: Array<{ reason: string; status: string; runId: string }> = [];
   const fakeDb = { insert: () => ({ values: async () => {} }) } as unknown as typeof import("@workspace/db")["db"];
   const journal = new SyncRunJournal(fakeDb, "TEST-RUN");
   journal.fileFailures = {
-    fail: async (_file: unknown, _path: string, reason: string) => { reasons.push(reason); },
+    fail: async (_file: unknown, _path: string, reason: string, status: string, runId: string) => {
+      notices.push({ reason, status, runId });
+    },
     resolve: async () => {},
   } as unknown as SyncFileFailureStore;
   const event = { status: "skipped" as const, path: "Source/video.mp4", itemType: "file" as const, message: "Parent folder conflicts." };
   await journal.record({ ...event, sourceFile: { id: 3, rootId: 1, parentId: 2, name: "video.mp4", ancestorIds: [1, 2] } });
   await journal.record({ ...event, message: "Intentionally excluded subtree." });
-  assert.deepEqual(reasons, ["Parent folder conflicts."]);
+  assert.deepEqual(notices, [{
+    reason: "Parent folder conflicts.", status: "skipped", runId: "TEST-RUN",
+  }]);
 });
