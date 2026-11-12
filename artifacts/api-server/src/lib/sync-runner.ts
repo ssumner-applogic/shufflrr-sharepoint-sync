@@ -7,6 +7,8 @@ import { SyncRunJournal, type SyncReporter } from "./sync-log";
 import { excludedMappingIds } from "./sync-exclusions";
 import { FileTransferError, sourceFileStream } from "./sync-transfer";
 import { SyncFileFailureStore } from "./sync-file-failures";
+import { canContinueAfterFileError } from "./sync-error-policy";
+import { SyncPauseRequested, syncPauseCheckpoint } from "./sync-control";
 import {
   syncConfigTable,
   syncItemsTable,
@@ -66,6 +68,8 @@ function safeError(error: unknown): string {
   if (error instanceof FileTransferError) return error.message;
   if (error instanceof ProviderBackoffError) return "The provider requested a cooldown. Sync will resume after the required delay.";
   if (error instanceof ShufflrrError) {
+    if (error.code === "http" && error.httpStatus === 404)
+      return "The Shufflrr source file could not be found. Refresh Shufflrr and try again.";
     if (error.code === "throttled") return "Shufflrr requested a cooldown. Sync will resume after the required delay.";
     if (error.code === "configuration") return "Shufflrr is not configured on the server.";
     if (error.code === "authentication") return "Shufflrr authentication failed.";
@@ -116,7 +120,8 @@ function retryDate(error: unknown): Date | undefined {
   return error instanceof ProviderBackoffError || error instanceof ShufflrrError ? error.retryAt : undefined;
 }
 
-async function loadSourceTree(client: ShufflrrClient, roots: SyncSourceFolder[], exclusions: SyncFolderExclusion[]) {
+async function loadSourceTree(client: ShufflrrClient, roots: SyncSourceFolder[], exclusions: SyncFolderExclusion[],
+  checkpoint: () => Promise<void> = async () => {}) {
   const records: SourceRecord[] = [];
   const excludedRecords: SourceRecord[] = [];
   const excludedKeys = new Set(exclusions.map(folder => `${folder.rootId}:${folder.id}`));
@@ -124,6 +129,7 @@ async function loadSourceTree(client: ShufflrrClient, roots: SyncSourceFolder[],
   const selectedRootIds = new Set(roots.map(root => String(root.id)));
 
   for (const configuredRoot of roots) {
+    await checkpoint();
     const rootEntry = await client.folder(configuredRoot.id);
     const currentRoot = { id: rootEntry.id, name: rootEntry.name };
     records.push({
@@ -141,6 +147,7 @@ async function loadSourceTree(client: ShufflrrClient, roots: SyncSourceFolder[],
     }];
 
     while (queue.length) {
+      await checkpoint();
       const current = queue.shift()!;
       const key = `${configuredRoot.id}:${current.folderId}`;
       if (foldersVisited.has(key)) throw new Error("A Shufflrr folder cycle was detected.");
@@ -231,6 +238,7 @@ async function saveRunState(
     conflicts: SyncConflict[];
     error: string | null;
     retryAt?: Date;
+    controlUpdatedAt?: Date;
   },
 ): Promise<void> {
   await db.update(syncConfigTable).set({
@@ -239,7 +247,13 @@ async function saveRunState(
     lastRunSummary: values.summary,
     lastRunConflicts: values.conflicts,
     lastRunError: values.error,
-    nextRunAt: sql`greatest(now() + ${syncConfigTable.pollIntervalSeconds} * interval '1 second', ${values.retryAt ?? new Date(0)}::timestamptz)`,
+    // Preserve a newer Start request, including a pause/start during this run.
+    nextRunAt: values.controlUpdatedAt
+      ? sql`case when ${syncConfigTable.enabled}
+          and date_trunc('milliseconds', ${syncConfigTable.updatedAt}) > ${values.controlUpdatedAt}::timestamptz
+          then greatest(coalesce(${syncConfigTable.nextRunAt}, now()), ${values.retryAt ?? new Date(0)}::timestamptz)
+          else greatest(now() + ${syncConfigTable.pollIntervalSeconds} * interval '1 second', ${values.retryAt ?? new Date(0)}::timestamptz) end`
+      : sql`greatest(now() + ${syncConfigTable.pollIntervalSeconds} * interval '1 second', ${values.retryAt ?? new Date(0)}::timestamptz)`,
     providerRetryAt: values.retryAt ?? null,
   }).where(eq(syncConfigTable.id, 1));
 }
@@ -257,13 +271,14 @@ export async function performSync(
   onPhase: (phase: SyncPhase) => void,
   providers = { loadDestinationSnapshot, createSyncFolder, updateSyncItem, uploadSyncFile, deleteSyncItem },
   reporter: SyncReporter = { record: async () => {}, progress: () => {} },
-): Promise<{ summary: SyncRunSummary; conflicts: SyncConflict[] }> {
+  checkpoint: () => Promise<void> = async () => {},
+): Promise<{ summary: SyncRunSummary; conflicts: SyncConflict[]; failedFiles: number }> {
   onPhase("source_listing");
   const exclusions = config.excludedFolders ?? [];
   const rootsToScan = config.retryTargets
     ? config.sourceFolders.filter(root => config.retryTargets!.some(target => target.sourceRootId === root.id))
     : config.sourceFolders;
-  const { records: allSourceRecords, excludedRecords } = await loadSourceTree(client, rootsToScan, exclusions);
+  const { records: allSourceRecords, excludedRecords } = await loadSourceTree(client, rootsToScan, exclusions, checkpoint);
   const retryKeys = config.retryTargets && new Set(config.retryTargets.map(item => `${item.sourceRootId}:${item.sourceId}`));
   const retryFiles = retryKeys && allSourceRecords.filter(record => !record.entry.isFolder &&
     retryKeys.has(`${record.root.id}:${record.entry.id}`));
@@ -274,7 +289,9 @@ export async function performSync(
       file.root.id === record.root.id && file.path.startsWith(`${record.path}/`))));
   const sourceRootIds = config.sourceFolders.map(folder => String(folder.id));
   onPhase("destination_listing");
+  await checkpoint();
   const { root: destinationRoot, records: initialDestinations, driveId } = await providers.loadDestinationSnapshot(db, config.destinationFolderId);
+  await checkpoint();
   const destinationById = new Map(initialDestinations.map(item => [item.id, item]));
   const destinationByPath = destinationPathIndex(initialDestinations);
   onPhase("reconciliation");
@@ -317,6 +334,7 @@ export async function performSync(
   const blockedSourceFolders = new Set<string>();
   const liveSourceKeys = new Set<string>();
   const mappedDestinationIds = new Set<string>();
+  let failedFiles = 0;
   const summary: SyncRunSummary = {
     createdFolders: 0,
     copiedFiles: 0,
@@ -371,6 +389,8 @@ export async function performSync(
   }
 
   for (const [recordIndex, record] of sourceRecords.entries()) {
+    // Finish the active item before pausing; unattempted items are not failures.
+    await checkpoint();
     try {
     let itemStatus: SyncEventStatus = "unchanged";
     const rootId = String(record.root.id);
@@ -567,7 +587,12 @@ export async function performSync(
     }[itemStatus]);
     } catch (error) {
       await recordEvent(record.path, record.entry.isFolder, "failed", safeError(error));
-      // Fail closed: no more provider writes or mirror deletions after an incomplete run.
+      if (!record.entry.isFolder && canContinueAfterFileError(error)) {
+        failedFiles += 1;
+        // Independent files can proceed. Mirror deletion is deferred until an error-free run.
+        continue;
+      }
+      // Folder prerequisites and shared/unknown failures still stop the run.
       // Explicitly account for every enumerated source item that was not attempted.
       for (const remaining of sourceRecords.slice(recordIndex + 1)) {
         await recordEvent(remaining.path, remaining.entry.isFolder, "skipped",
@@ -577,7 +602,12 @@ export async function performSync(
     }
   }
 
-  const staleCandidates = retryKeys ? [] : existingMappings.filter(mapping =>
+  await checkpoint();
+  if (failedFiles && !retryKeys) await reporter.record({
+    status: "skipped", itemType: "run", path: null, destinationPath: null,
+    message: "Mirror deletions deferred because some files failed. Independent files were still processed.",
+  });
+  const staleCandidates = retryKeys || failedFiles ? [] : existingMappings.filter(mapping =>
     !protectedMappingIds.has(mapping.id) &&
     !liveSourceKeys.has(sourceKey(mapping.sourceRootId, mapping.sourceId, mapping.sourceIsFolder)),
   );
@@ -609,6 +639,7 @@ export async function performSync(
   const deletionEvents = new Set<string>();
 
   for (const mapping of staleMappings) {
+    await checkpoint();
     try {
     if (mapping.sourceIsFolder) {
       let parent = mapping.sourceParentId;
@@ -710,7 +741,7 @@ export async function performSync(
   }
 
   summary.conflicts = conflictKeys.size;
-  return { summary, conflicts };
+  return { summary, conflicts, failedFiles };
 }
 
 export async function runScheduledSync(): Promise<SyncResult> {
@@ -723,6 +754,7 @@ export async function runScheduledSync(): Promise<SyncResult> {
   let intervalSeconds = 60;
   let journal: SyncRunJournal | undefined;
   let pendingRetries: Array<typeof syncFileFailuresTable.$inferSelect> = [];
+  let controlUpdatedAt: Date | undefined;
   try {
     const lock = await lockConnection.query<{ locked: boolean }>(
       "SELECT pg_try_advisory_lock($1) AS locked",
@@ -732,6 +764,7 @@ export async function runScheduledSync(): Promise<SyncResult> {
     if (!locked) return { skipped: true };
 
     const [config] = await db.select().from(syncConfigTable).where(eq(syncConfigTable.id, 1)).limit(1);
+    controlUpdatedAt = config?.updatedAt;
     const queued = await db.select().from(syncFileFailuresTable).where(and(
       isNull(syncFileFailuresTable.resolvedAt), isNotNull(syncFileFailuresTable.retryRequestedAt),
     )).orderBy(syncFileFailuresTable.id).limit(1);
@@ -739,7 +772,12 @@ export async function runScheduledSync(): Promise<SyncResult> {
       const valid = config?.destinationFolderId === row.destinationRootId &&
         config.sourceFolders.some(folder => folder.id === row.sourceRootId) &&
         !config.excludedFolders.some(folder => folder.rootId === row.sourceRootId && row.ancestorIds.includes(folder.id));
-      if (valid) pendingRetries.push(row);
+      if (valid) {
+        pendingRetries.push(row);
+        // A new explicit attempt makes a dismissed notice visible again if the retry also fails.
+        if (row.dismissedAt) await db.update(syncFileFailuresTable)
+          .set({ dismissedAt: null }).where(eq(syncFileFailuresTable.id, row.id));
+      }
       else await db.update(syncFileFailuresTable).set({ retryRequestedAt: null,
         reason: "The sync scope changed. This file was not retried; adjust the selection or dismiss this notice." })
         .where(eq(syncFileFailuresTable.id, row.id));
@@ -771,6 +809,8 @@ export async function runScheduledSync(): Promise<SyncResult> {
 
     client = newShufflrrClient();
     const credentials = shufflrrConfig();
+    const checkpoint = syncPauseCheckpoint(db, pendingRetries.length > 0);
+    await checkpoint();
     phase = "authentication";
     await client.login(credentials.email, credentials.password);
     const outcome = await performSync(db, client, {
@@ -780,18 +820,33 @@ export async function runScheduledSync(): Promise<SyncResult> {
       excludedFolders: config.excludedFolders,
       ...(pendingRetries.length ? { retryTargets: pendingRetries.map(row =>
         ({ sourceRootId: row.sourceRootId, sourceId: row.sourceId })) } : {}),
-    }, nextPhase => { phase = nextPhase; }, undefined, journal);
-    const status = outcome.conflicts.length ? "partial" : "success";
+    }, nextPhase => { phase = nextPhase; }, undefined, journal, checkpoint);
+    const status = outcome.conflicts.length || outcome.failedFiles ? "partial" : "success";
+    const partialError = outcome.failedFiles
+      ? `${outcome.failedFiles} file${outcome.failedFiles === 1 ? "" : "s"} could not sync. Other independent files were processed; review the file notices.`
+      : null;
     phase = "save_status";
     await saveRunState(db, {
       status,
       summary: outcome.summary,
       conflicts: outcome.conflicts,
-      error: null,
+      error: partialError,
+      controlUpdatedAt,
     });
-    await journal.finish(status, null);
+    await journal.finish(status, partialError);
     return { skipped: false, status, summary: outcome.summary, nextCheckMs: Math.min(5000, intervalSeconds * 1000) };
   } catch (error) {
+    if (error instanceof SyncPauseRequested && journal) {
+      await journal.record({ status: "skipped", itemType: "run", path: null, destinationPath: null,
+        message: "Paused by user. Any active item finished safely; remaining items were not attempted." });
+      await saveRunState(db, {
+        status: "partial", summary: journal.summary, conflicts: journal.conflicts,
+        error: null, controlUpdatedAt,
+      });
+      await journal.finish("partial", null);
+      logger.info({ event: "sync_run_paused", requestId: runId }, "Sync paused at an item boundary.");
+      return { skipped: false, status: "partial", summary: journal.summary ?? undefined, nextCheckMs: 1000 };
+    }
     const message = safeError(error);
     if (pendingRetries.length) await db.update(syncFileFailuresTable).set({
       reason: message,
@@ -824,6 +879,7 @@ export async function runScheduledSync(): Promise<SyncResult> {
       conflicts: journal?.conflicts ?? [],
       error: `${message} Reference: ${runId}`,
       retryAt: retryDate(error),
+      controlUpdatedAt,
     }).catch(() => {});
     throw error;
   } finally {

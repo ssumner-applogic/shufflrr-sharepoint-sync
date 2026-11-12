@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
@@ -7,6 +7,7 @@ import {
   Loader2,
   RefreshCw,
   Save,
+  Settings,
   X,
 } from "lucide-react";
 import {
@@ -25,6 +26,7 @@ import {
   type SyncSourceFolder,
   type SyncFolderExclusion,
 } from "@workspace/api-client-react";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { SyncActivityLog } from "./SyncActivityLog";
 import { SyncFailureBanners } from "./SyncFailureBanners";
 import { currentExclusionAncestors, folderSelectionState, toggleFolderSelection } from "./folder-selection";
@@ -279,7 +281,7 @@ function ConfigStatus({ config }: { config: SyncConfig }) {
   const running = config.lastRunStatus === "running";
   const cooldownUntil = config.providerCooldownUntil ? new Date(config.providerCooldownUntil) : null;
   let state: { label: string; tone: string };
-  if (!config.enabled) state = { label: "Paused", tone: "text-muted-foreground" };
+  if (!config.enabled) state = { label: running ? "Finishing active work…" : "Paused", tone: "text-muted-foreground" };
   else if (running) state = { label: "Running now", tone: "text-sky-700" };
   else if (cooldownUntil && cooldownUntil.getTime() > now) {
     state = { label: `Provider cooldown until ${cooldownUntil.toLocaleTimeString()}`, tone: "text-amber-700" };
@@ -319,6 +321,7 @@ function ConfigStatus({ config }: { config: SyncConfig }) {
 }
 
 export function SyncAgent({ active }: { active: boolean }) {
+  const configTriggerRef = useRef<HTMLButtonElement>(null);
   const queryClient = useQueryClient();
   const configQuery = useQuery({
     queryKey: getGetSyncConfigQueryKey(),
@@ -335,6 +338,8 @@ export function SyncAgent({ active }: { active: boolean }) {
   const [expandedSharePoint, setExpandedSharePoint] = useState<Set<string>>(new Set());
   const [expandedShufflrr, setExpandedShufflrr] = useState<Set<number>>(new Set());
   const [pickerError, setPickerError] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const pickersActive = active && drawerOpen;
   const savedFolderSettings = JSON.stringify(config ? {
     destinationFolderId: config.destinationFolderId,
     destinationFolderName: config.destinationFolderName,
@@ -372,7 +377,12 @@ export function SyncAgent({ active }: { active: boolean }) {
   });
   const enabledMutation = useMutation({
     mutationFn: (enabled: boolean) => setSyncEnabled({ enabled }),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }); },
+    onSuccess: async updated => {
+      // An older in-flight status poll must not undo the newly saved button state.
+      await queryClient.cancelQueries({ queryKey: getGetSyncConfigQueryKey() });
+      queryClient.setQueryData(getGetSyncConfigQueryKey(), updated);
+      await queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() });
+    },
   });
   const intervalMutation = useMutation({
     mutationFn: (pollIntervalSeconds: 1 | 5 | 30 | 60 | 300 | 3600) => setSyncInterval({ pollIntervalSeconds }),
@@ -406,7 +416,8 @@ export function SyncAgent({ active }: { active: boolean }) {
   const saveError = errorText(saveMutation.error);
   const actionError = errorText(intervalMutation.error) ?? errorText(enabledMutation.error) ?? errorText(dismissMutation.error);
   const configError = errorText(configQuery.error);
-  const canSave = !!destination && selected.size > 0 && Array.isArray(config?.excludedFolders) && !config?.enabled && !saveMutation.isPending && !intervalMutation.isPending;
+  const foldersLocked = !!config?.enabled || config?.lastRunStatus === "running";
+  const canSave = !!destination && selected.size > 0 && Array.isArray(config?.excludedFolders) && !foldersLocked && !saveMutation.isPending && !intervalMutation.isPending;
 
   return (
     <div className="space-y-5" data-testid="sync-agent">
@@ -433,27 +444,6 @@ export function SyncAgent({ active }: { active: boolean }) {
           </label>
           <button
             type="button"
-            disabled={!canSave}
-            onClick={() => {
-              if (!destination) return;
-              saveMutation.mutate({
-                destinationFolderId: destination.id,
-                destinationFolderName: destination.name,
-                sourceFolders: [...selected.values()],
-              excludedFolders: [...excluded.values()].map(folder => ({
-                ...folder, ancestorIds: currentExclusionAncestors(folder, parentById),
-              })),
-                pollIntervalSeconds: config?.pollIntervalSeconds ?? 60,
-              });
-            }}
-            className="inline-flex items-center gap-2 rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
-            data-testid="button-save-sync-config"
-          >
-            {saveMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-            Save settings
-          </button>
-          <button
-            type="button"
             onClick={() => refreshMutation.mutate()}
             disabled={!active || refreshMutation.isPending || saveMutation.isPending || enabledMutation.isPending}
             aria-busy={refreshMutation.isPending}
@@ -473,9 +463,22 @@ export function SyncAgent({ active }: { active: boolean }) {
             data-testid="button-toggle-sync"
           >
             {enabledMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-            {enabledMutation.isPending ? "Saving…" : config.enabled ? "Pause sync" : "Enable sync"}
+            {enabledMutation.isPending ? "Saving…" : config.enabled ? "Pause sync" : "Start sync"}
           </button>
         )}
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            ref={configTriggerRef}
+            aria-label="Open sync folder configuration"
+            aria-haspopup="dialog"
+            aria-expanded={drawerOpen}
+            title="Folder configuration"
+            className="grid size-9 place-items-center rounded-md border bg-card hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-testid="button-open-sync-config"
+          >
+            <Settings className="size-4" aria-hidden="true" />
+          </button>
         </div>
       </div>
 
@@ -494,9 +497,59 @@ export function SyncAgent({ active }: { active: boolean }) {
       {config && <SyncFailureBanners active={active} />}
       {config && <SyncActivityLog config={config} active={active} />}
       {config?.enabled && <p className="text-xs text-muted-foreground">Pause sync before changing its folders.</p>}
+      {!config?.enabled && config?.lastRunStatus === "running" &&
+        <p className="text-xs text-muted-foreground" role="status">Pause saved. Active work will finish safely before stopping; folder settings stay locked until it finishes.</p>}
 
-      <div className={`grid gap-4 lg:grid-cols-2 ${config?.enabled ? "opacity-70" : ""}`}>
-        <section className="flex h-[clamp(12.6rem,calc(70dvh_-_12.6rem),36.4rem)] min-w-0 flex-col rounded-lg border bg-card">
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <SheetContent
+          side="right"
+          hideCloseButton
+          onCloseAutoFocus={event => {
+            event.preventDefault();
+            configTriggerRef.current?.focus();
+          }}
+          className="flex h-[100dvh] w-full flex-col gap-0 overflow-y-auto p-0 motion-reduce:!animate-none sm:max-w-xl md:overflow-hidden"
+          data-testid="sheet-sync-config"
+        >
+          <div className="flex shrink-0 items-center gap-2 border-b px-3 py-3">
+            <SheetClose
+              className="grid size-9 shrink-0 place-items-center rounded-md hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Close folder configuration"
+              data-testid="button-close-sync-config"
+            >
+              <ChevronRight className="size-5" aria-hidden="true" />
+            </SheetClose>
+            <div className="min-w-0 flex-1">
+              <SheetTitle className="text-base">Folder configuration</SheetTitle>
+              <SheetDescription className="truncate text-xs">
+                {foldersLocked ? "Locked while sync is running or enabled." : "Closing keeps your unsaved selections."}
+              </SheetDescription>
+            </div>
+            <button
+              type="button"
+              disabled={!canSave}
+              onClick={() => {
+                if (!destination) return;
+                saveMutation.mutate({
+                  destinationFolderId: destination.id,
+                  destinationFolderName: destination.name,
+                  sourceFolders: [...selected.values()],
+                excludedFolders: [...excluded.values()].map(folder => ({
+                  ...folder, ancestorIds: currentExclusionAncestors(folder, parentById),
+                })),
+                  pollIntervalSeconds: config?.pollIntervalSeconds ?? 60,
+                });
+              }}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-primary-foreground hover:bg-primary/90 text-sm font-medium  disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid="button-save-sync-config"
+            >
+              {saveMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+              Save settings
+            </button>
+          </div>
+          {saveError && <p className="shrink-0 px-4 pt-3 text-sm text-destructive" role="alert">{saveError}</p>}
+      <div className={`flex min-h-0 flex-1 flex-col gap-3 p-3 ${foldersLocked ? "opacity-70" : ""}`}>
+        <section className="flex min-h-[14rem] min-w-0 flex-1 basis-0 flex-col md:min-h-0 rounded-lg border bg-card">
           <div className="shrink-0 border-b px-4 py-3">
             <h3 className="text-sm font-medium">SharePoint Sync Folder</h3>
           </div>
@@ -510,7 +563,7 @@ export function SyncAgent({ active }: { active: boolean }) {
             >
             <button
               type="button"
-              disabled={!!config?.enabled}
+              disabled={foldersLocked}
               onClick={() => setDestination({ id: "root", name: "Shared Documents" })}
               className={`flex min-h-9 w-full items-center gap-2 rounded px-2 text-left text-sm hover:bg-secondary disabled:cursor-not-allowed ${destination?.id === "root" ? "bg-accent font-medium" : ""}`}
               aria-pressed={destination?.id === "root"}
@@ -520,9 +573,9 @@ export function SyncAgent({ active }: { active: boolean }) {
             </button>
             <div className="mt-1">
               <SharePointFolderBranch
-                active={active}
+                active={pickersActive}
                 level={0}
-                disabled={!!config?.enabled}
+                disabled={foldersLocked}
                 expanded={expandedSharePoint}
                 toggle={id => setExpandedSharePoint(previous => {
                   const next = new Set(previous);
@@ -543,7 +596,7 @@ export function SyncAgent({ active }: { active: boolean }) {
           </div>
         </section>
 
-        <section className="flex h-[clamp(12.6rem,calc(70dvh_-_12.6rem),36.4rem)] min-w-0 flex-col rounded-lg border bg-card">
+        <section className="flex min-h-[14rem] min-w-0 flex-1 basis-0 flex-col md:min-h-0 rounded-lg border bg-card">
           <div className="shrink-0 border-b px-4 py-3">
             <h3 className="text-sm font-medium">Shufflrr folders</h3>
           </div>
@@ -556,9 +609,9 @@ export function SyncAgent({ active }: { active: boolean }) {
               data-testid="sync-shufflrr-scroll"
             >
             <ShufflrrFolderBranch
-              active={active}
+              active={pickersActive}
               level={0}
-              disabled={!!config?.enabled}
+              disabled={foldersLocked}
               expanded={expandedShufflrr}
               toggle={id => setExpandedShufflrr(previous => {
                 const next = new Set(previous);
@@ -582,7 +635,10 @@ export function SyncAgent({ active }: { active: boolean }) {
         </section>
       </div>
 
-      {pickerError && <div className="text-sm text-destructive" role="alert">{pickerError}</div>}
+            {pickerError && <div className="text-sm text-destructive" role="alert">{pickerError}</div>}
+
+        </SheetContent>
+      </Sheet>
 
       {config?.detachedPairs.length ? (
         <section className="rounded-lg border bg-card p-4" aria-labelledby="sync-detached-heading">

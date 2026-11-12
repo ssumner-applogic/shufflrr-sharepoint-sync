@@ -27,6 +27,7 @@ import type {
 import type {
   AccessReport,
   ConnectionStatus,
+  DismissAllSyncFailures200,
   FolderListing,
   GetSyncFailures200,
   GetSyncFailuresParams,
@@ -35,6 +36,7 @@ import type {
   LibraryItem,
   ListItemsParams,
   ListShufflrrItemsParams,
+  RetryAllSyncFiles202,
   RetrySyncFile202,
   SharePointCreateFolderInput,
   SharePointUpdateItemInput,
@@ -577,6 +579,80 @@ export function useGetSyncFailures<TData = Awaited<ReturnType<typeof getSyncFail
 
 
 
+export const getRetryAllSyncFilesUrl = () => {
+
+
+
+
+  return `/api/sync/failures/retry-all`
+}
+
+/**
+ * @summary Queue all visible unresolved in-scope files after a run finishes
+ */
+export const retryAllSyncFiles = async ( options?: Parameters<typeof customFetch>[1]): Promise<RetryAllSyncFiles202> => {
+
+  return customFetch<RetryAllSyncFiles202>(getRetryAllSyncFilesUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryAllSyncFilesMutationKey = () => ['retryAllSyncFiles'] as const;
+
+export const getRetryAllSyncFilesMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryAllSyncFiles>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryAllSyncFiles>>, TError,void, TContext> => {
+
+const mutationKey = getRetryAllSyncFilesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryAllSyncFiles>>, void> = () => {
+
+
+          return  retryAllSyncFiles(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryAllSyncFilesMutationResult = NonNullable<Awaited<ReturnType<typeof retryAllSyncFiles>>>
+
+    export type RetryAllSyncFilesMutationError = ErrorType<void>
+
+
+    /**
+ * @summary Queue all visible unresolved in-scope files after a run finishes
+ */
+export const useRetryAllSyncFiles = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryAllSyncFiles>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof retryAllSyncFiles>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRetryAllSyncFilesMutationOptions(options), queryClient);
+    }
+
 export const getDismissSyncFileFailureUrl = (id: number,) => {
 
 
@@ -643,6 +719,80 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getDismissSyncFileFailureMutationOptions(options), queryClient);
+    }
+
+export const getDismissAllSyncFailuresUrl = () => {
+
+
+
+
+  return `/api/sync/failures/dismiss-all`
+}
+
+/**
+ * @summary Dismiss every currently visible unresolved file notice
+ */
+export const dismissAllSyncFailures = async ( options?: Parameters<typeof customFetch>[1]): Promise<DismissAllSyncFailures200> => {
+
+  return customFetch<DismissAllSyncFailures200>(getDismissAllSyncFailuresUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getDismissAllSyncFailuresMutationKey = () => ['dismissAllSyncFailures'] as const;
+
+export const getDismissAllSyncFailuresMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissAllSyncFailures>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof dismissAllSyncFailures>>, TError,void, TContext> => {
+
+const mutationKey = getDismissAllSyncFailuresMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dismissAllSyncFailures>>, void> = () => {
+
+
+          return  dismissAllSyncFailures(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DismissAllSyncFailuresMutationResult = NonNullable<Awaited<ReturnType<typeof dismissAllSyncFailures>>>
+
+    export type DismissAllSyncFailuresMutationError = ErrorType<unknown>
+
+
+    /**
+ * @summary Dismiss every currently visible unresolved file notice
+ */
+export const useDismissAllSyncFailures = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissAllSyncFailures>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof dismissAllSyncFailures>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDismissAllSyncFailuresMutationOptions(options), queryClient);
     }
 
 export const getRetrySyncFileUrl = (id: number,) => {

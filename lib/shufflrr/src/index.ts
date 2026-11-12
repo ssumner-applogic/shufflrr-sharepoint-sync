@@ -9,6 +9,7 @@ export class ShufflrrError extends Error {
     public readonly code: "configuration" | "authentication" | "permission" | "http" | "network" | "schema" | "limit" | "throttled",
     message: string,
     public readonly retryAt?: Date,
+    public readonly httpStatus?: number,
   ) {
     super(message);
     this.name = "ShufflrrError";
@@ -125,7 +126,7 @@ export class ShufflrrClient {
           if (status === 403) throw new ShufflrrError("permission", "Access denied. Check the service account's group and folder permissions.");
           if (status >= 300 && status < 400)
             throw new ShufflrrError("http", "API redirected the request. Redirects are blocked to protect credentials; verify the portal URL and authentication settings.");
-          throw new ShufflrrError("http", `API request failed (HTTP ${status}).`);
+          throw new ShufflrrError("http", `API request failed (HTTP ${status}).`, undefined, status);
         }
         return response;
       } catch (error) {

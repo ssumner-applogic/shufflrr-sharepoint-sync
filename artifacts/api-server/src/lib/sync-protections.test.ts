@@ -1,17 +1,25 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ProviderBackoffError, ProviderGate, retryDelay } from "@workspace/shufflrr/http-policy";
-import { SetSyncIntervalBody } from "@workspace/api-zod";
+import { SetSyncIntervalBody, RetryAllSyncFilesResponse, DismissAllSyncFailuresResponse } from "@workspace/api-zod";
 import { applyDelta, scopeSnapshot } from "./sharepoint-snapshot";
 import type { SyncDriveItem } from "./sharepoint";
 import { performSync } from "./sync-runner";
 import { syncItemsTable, type SyncItem } from "@workspace/db/schema";
-import type { ShufflrrClient } from "@workspace/shufflrr";
+import { ShufflrrError, type ShufflrrClient } from "@workspace/shufflrr";
 import type { SyncConflict, SyncLogEventInput, SyncRunSummary } from "@workspace/db/schema";
 import { syncSchedulerDelay } from "./sync-scheduler";
 import { GetSyncRunEventsQueryParams } from "@workspace/api-zod";
 import { SaveSyncConfigBody } from "@workspace/api-zod";
 import { excludedMappingIds, validateFolderExclusions } from "./sync-exclusions";
+import { FileTransferError } from "./sync-transfer";
+import { AccessError } from "./sharepoint";
+import { canContinueAfterFileError } from "./sync-error-policy";
+import express from "express";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
+import { syncFailureRoutes } from "../routes/sync-failures";
+import { setSyncEnabledState, syncPauseCheckpoint, SyncPauseRequested } from "./sync-control";
 
 function clock() {
   let time = Date.UTC(2026, 0, 1);
@@ -424,7 +432,7 @@ test("a conflict logs the exact folder and every descendant skipped under it", a
   assert.deepEqual(fixture.calls, []);
 });
 
-test("an oversized file preserves prior outcomes and names both the failed and unattempted files", async () => {
+test("an oversized file is recorded while independent later files continue and deletions are deferred", async () => {
   const fixture = engineFixture([], [{ ...item("existing", "conflict.txt", "parent"), path: "Source/conflict.txt" }]);
   const client = {
     folder: async () => sourceRoot,
@@ -432,22 +440,271 @@ test("an oversized file preserves prior outcomes and names both the failed and u
       { id: 4, name: "conflict.txt", isFolder: false },
       sourceFile,
       { id: 5, name: "huge.pptx", isFolder: false },
-      { id: 6, name: "later.pdf", isFolder: false },
+      { id: 6, name: "later.pdf", isFolder: false, size: 3 },
     ],
     download: async (id: number) => new Response("abc", {
       headers: id === 5 ? { "content-length": String(300_000_001) } : {},
     }),
   } as unknown as ShufflrrClient;
   const log = collectLog();
-  await assert.rejects(performSync(fixture.database, client, engineConfig, () => {}, fixture.providers, log), /300 MB/);
-  assert.equal(log.summary?.copiedFiles, 1);
+  const result = await performSync(fixture.database, client, engineConfig, () => {}, fixture.providers, log);
+  assert.equal(result.failedFiles, 1);
+  assert.equal(log.summary?.copiedFiles, 2);
   assert.equal(log.summary?.createdFolders, 1);
   assert.equal(log.summary?.conflicts, 1);
   assert.equal(log.conflicts[0]?.path, "Source/conflict.txt");
   assert.equal(log.events.find(row => row.status === "failed")?.path, "Source/huge.pptx");
   assert.match(log.events.find(row => row.status === "failed")!.message, /300 MB/);
-  assert.equal(log.events.find(row => row.status === "skipped")?.path, "Source/later.pdf");
+  assert.equal(log.events.find(row => row.path === "Source/later.pdf")?.status, "copied");
+  assert.match(log.events.find(row => row.itemType === "run")!.message, /deletions deferred/);
   assert.ok(!fixture.calls.some(call => call.startsWith("delete:")));
+});
+
+test("file-local upload errors do not prevent later independent files from syncing", async () => {
+  for (const error of [new FileTransferError("SharePoint did not confirm the upload."),
+    new AccessError("InvalidName", "Invalid name", 400)]) {
+    const fixture = engineFixture();
+    const upload = fixture.providers.uploadSyncFile;
+    fixture.providers.uploadSyncFile = async (...args) => {
+      if (args[1] === sourceFile.name) throw error;
+      return upload(...args);
+    };
+    const client = { folder: async () => sourceRoot, contents: async () => [
+      sourceFile, { ...sourceFile, id: 6, name: "later.pdf" },
+    ], download: async () => new Response("abc") } as unknown as ShufflrrClient;
+    const log = collectLog();
+    const result = await performSync(fixture.database, client, engineConfig, () => {}, fixture.providers, log);
+    assert.equal(result.failedFiles, 1);
+    assert.equal(result.summary.copiedFiles, 1);
+    assert.equal(log.events.find(row => row.path === "Source/later.pdf")?.status, "copied");
+    assert.ok(!fixture.rows().some(row => row.sourceId === String(sourceFile.id)));
+  }
+});
+
+test("shared and unknown failures stop later files and never perform deletions", async () => {
+  for (const error of [
+    new AccessError("Denied", "Denied", 403),
+    new FileTransferError("Upload denied", 401),
+    new FileTransferError("Upload denied", 403),
+    new ProviderBackoffError("SharePoint", new Date(Date.now() + 60_000)),
+    new Error("database unavailable"),
+    new TypeError("fetch failed"),
+  ]) {
+    const fixture = engineFixture();
+    fixture.providers.uploadSyncFile = async () => { throw error; };
+    const client = { folder: async () => sourceRoot, contents: async () => [
+      sourceFile, { ...sourceFile, id: 6, name: "later.pdf" },
+    ], download: async () => new Response("abc") } as unknown as ShufflrrClient;
+    const log = collectLog();
+    await assert.rejects(performSync(fixture.database, client, engineConfig, () => {}, fixture.providers, log));
+    assert.equal(log.events.find(row => row.path === "Source/later.pdf")?.status, "skipped");
+    assert.ok(!fixture.calls.some(call => call.startsWith("delete:")));
+  }
+});
+
+test("folder prerequisite failures still stop the run", async () => {
+  const fixture = engineFixture();
+  fixture.providers.createSyncFolder = async () => { throw new AccessError("InvalidName", "Invalid name", 400); };
+  const log = collectLog();
+  await assert.rejects(performSync(fixture.database, sourceClient(true), engineConfig, () => {}, fixture.providers, log));
+  assert.equal(log.events[0].itemType, "folder");
+  assert.equal(log.events[0].status, "failed");
+  assert.ok(!fixture.calls.some(call => call.startsWith("upload:")));
+});
+
+test("only explicitly local errors qualify for continuation", () => {
+  for (const status of [401, 403, 429, 500, 502, 503, 504]) {
+    assert.equal(canContinueAfterFileError(new FileTransferError("Upload failed", status)), false);
+    assert.equal(canContinueAfterFileError(new AccessError("GraphError", "Graph error", status)), false);
+  }
+  assert.equal(canContinueAfterFileError(new Error("unknown")), false);
+  assert.equal(canContinueAfterFileError(new FileTransferError("Unconfirmed upload")), true);
+  assert.equal(canContinueAfterFileError(new ShufflrrError("http", "Not found", undefined, 404)), true);
+  assert.equal(canContinueAfterFileError(new ShufflrrError("network", "Disconnected")), false);
+  assert.equal(canContinueAfterFileError(new ShufflrrError("authentication", "Expired")), false);
+});
+
+test("pause saves during an active run without taking its advisory lock; Start is due immediately", async () => {
+  const nextRunAt = new Date(Date.now() + 60_000);
+  const config = { ...engineConfig, enabled: true, nextRunAt, lastRunStatus: "running" };
+  const updates: Array<Record<string, unknown>> = [];
+  const tx = {
+    execute: () => { throw new Error("Control changes must not take the worker's advisory lock"); },
+    select: () => ({ from: () => ({ where: () => ({ limit: () => ({
+      for: async (mode: string) => { assert.equal(mode, "update"); return [config]; },
+    }) }) }) }),
+    insert: () => ({ values: () => ({
+      onConflictDoUpdate: async ({ set }: { set: Record<string, unknown> }) => {
+        updates.push(set);
+        config.enabled = Boolean(set.enabled);
+      },
+    }) }),
+  };
+  const db = { transaction: async (action: (value: unknown) => Promise<void>) => action(tx) } as unknown as typeof import("@workspace/db")["db"];
+  await setSyncEnabledState(db, false);
+  assert.equal(config.enabled, false);
+  assert.equal(updates[0].nextRunAt, nextRunAt);
+  await setSyncEnabledState(db, true);
+  assert.equal(config.enabled, true);
+  const scheduled = new PgDialect().sqlToQuery(updates[1].nextRunAt as SQL);
+  assert.match(scheduled.sql, /greatest\(now\(\), coalesce/);
+  assert.match(scheduled.sql, /provider_retry_at/);
+  await setSyncEnabledState(db, true);
+  assert.equal(updates[2].nextRunAt, nextRunAt, "Repeated Start must not bypass the current schedule");
+});
+
+test("a persisted pause stops automatic work, but not explicitly requested targeted retries", async () => {
+  let checks = 0;
+  const db = { select: () => ({ from: () => ({ where: () => ({ limit: async () => {
+    checks++; return [{ enabled: false }];
+  } }) }) }) } as unknown as typeof import("@workspace/db")["db"];
+  await assert.rejects(syncPauseCheckpoint(db, false)(), SyncPauseRequested);
+  assert.equal(checks, 1);
+  await syncPauseCheckpoint(db, true)();
+  assert.equal(checks, 1, "Targeted retries are explicitly allowed while automatic sync is paused");
+});
+
+test("pause finishes the current file, then stops before later files or mirror deletion", async () => {
+  const stale = { ...mapping(2, "99", "stale", false), relativePath: "Source/gone.pdf" };
+  const fixture = engineFixture([stale], [{ ...item("stale", "gone.pdf", "root"), path: "Source/gone.pdf" }]);
+  let paused = false;
+  const upload = fixture.providers.uploadSyncFile;
+  fixture.providers.uploadSyncFile = async (...args) => {
+    const saved = await upload(...args);
+    paused = true; // User clicked Pause while this transfer was in flight.
+    return saved;
+  };
+  const client = { folder: async () => sourceRoot, contents: async () => [
+    sourceFile, { ...sourceFile, id: 6, name: "later.pdf" },
+  ], download: async () => new Response("abc") } as unknown as ShufflrrClient;
+  const log = collectLog();
+  await assert.rejects(performSync(fixture.database, client, engineConfig, () => {}, fixture.providers, log,
+    async () => { if (paused) throw new SyncPauseRequested(); }), SyncPauseRequested);
+  assert.equal(log.events.find(event => event.path === "Source/deck.pptx")?.status, "copied");
+  assert.ok(fixture.rows().some(row => row.sourceId === "3"), "Completed file retains its mapping");
+  assert.ok(!fixture.calls.some(call => call.includes("later.pdf") || call.startsWith("delete:")));
+  assert.ok(!log.events.some(event => event.status === "failed"));
+});
+
+test("pause before listing makes no provider calls", async () => {
+  const fixture = engineFixture();
+  const client = { folder: async () => { assert.fail("Paused sync must not request a source folder"); } } as unknown as ShufflrrClient;
+  await assert.rejects(performSync(fixture.database, client, engineConfig, () => {}, fixture.providers, collectLog(),
+    async () => { throw new SyncPauseRequested(); }), SyncPauseRequested);
+  assert.deepEqual(fixture.calls, []);
+});
+
+test("pausing between deletions prevents deleting the next managed item", async () => {
+  const fixture = engineFixture([
+    mapping(1, "1", "d-root", true),
+    { ...mapping(2, "98", "d-first", false), relativePath: "Source/first.pdf" },
+    { ...mapping(3, "99", "d-second", false), relativePath: "Source/second.pdf" },
+  ], [
+    { ...item("d-root", "Source", "root", true), path: "Source" },
+    { ...item("d-first", "first.pdf", "d-root"), path: "Source/first.pdf" },
+    { ...item("d-second", "second.pdf", "d-root"), path: "Source/second.pdf" },
+  ]);
+  let paused = false;
+  const remove = fixture.providers.deleteSyncItem;
+  fixture.providers.deleteSyncItem = async id => { await remove(id); paused = true; };
+  const client = { folder: async () => sourceRoot, contents: async () => [] } as unknown as ShufflrrClient;
+  await assert.rejects(performSync(fixture.database, client, engineConfig, () => {}, fixture.providers, collectLog(),
+    async () => { if (paused) throw new SyncPauseRequested(); }), SyncPauseRequested);
+  assert.ok(fixture.calls.includes("delete:d-first"));
+  assert.ok(!fixture.calls.includes("delete:d-second"));
+});
+
+test("a source file removed during download does not block the next file or delete stale managed copies", async () => {
+  const stale = { ...mapping(1, "99", "stale", false), relativePath: "Source/gone.pdf" };
+  const fixture = engineFixture([stale], [{ ...item("stale", "gone.pdf", "root"), path: "Source/gone.pdf" }]);
+  const client = {
+    folder: async () => sourceRoot,
+    contents: async () => [sourceFile, { ...sourceFile, id: 6, name: "later.pdf" }],
+    download: async (id: number) => {
+      if (id === sourceFile.id) throw new ShufflrrError("http", "Missing", undefined, 404);
+      return new Response("abc");
+    },
+  } as unknown as ShufflrrClient;
+  const log = collectLog();
+  const result = await performSync(fixture.database, client, engineConfig, () => {}, fixture.providers, log);
+  assert.equal(result.failedFiles, 1);
+  assert.equal(result.summary.copiedFiles, 1);
+  assert.equal(log.events.find(row => row.path === "Source/later.pdf")?.status, "copied");
+  assert.ok(!fixture.calls.includes("delete:stale"));
+  assert.ok(fixture.rows().some(row => row.destinationId === "stale"));
+});
+
+test("retry-all queues across pages atomically, preserves cooldowns and refuses overlapping runs", async () => {
+  let locked = true;
+  let count = 65;
+  const statements: Array<{ sql: string; params: unknown[] }> = [];
+  const cooldown = new Date(Date.now() + 60_000);
+  const config = {
+    ...engineConfig, excludedFolders: [exclusion], providerRetryAt: cooldown, lastRunStatus: "partial",
+  };
+  const fakeDb = {
+    transaction: async (action: (tx: unknown) => Promise<unknown>) => action({
+      select: () => ({ from: () => ({ where: async () => [config] }) }),
+      execute: async (query: SQL) => {
+        const statement = new PgDialect().sqlToQuery(query);
+        statements.push(statement);
+        if (statement.sql.includes("pg_try_advisory_xact_lock")) return { rows: [{ locked }] };
+        const queuedCount = count;
+        count = 0;
+        return { rows: [{ count: queuedCount }] };
+      },
+      update: () => ({ set: () => ({ where: () => ({
+        returning: async () => [],
+      }) }) }),
+    }),
+    update: () => ({ set: () => ({
+      where: (condition: SQL) => {
+        statements.push(new PgDialect().sqlToQuery(condition));
+        return { returning: async () => [{ id: 1 }, { id: 2 }, { id: 3 }] };
+      },
+    }) }),
+  } as unknown as typeof import("@workspace/db")["db"];
+  const app = express();
+  app.use("/failures", syncFailureRoutes((_req, res, error) => {
+    res.status(error instanceof AccessError ? error.status : 500).end();
+  }, async () => fakeDb));
+  const server = app.listen(0, "127.0.0.1");
+  try {
+    await new Promise<void>(resolve => server.on("listening", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const url = `http://127.0.0.1:${address.port}/failures/retry-all`;
+    const first = await fetch(url, { method: "POST" });
+    assert.equal(first.status, 202);
+    assert.deepEqual(await first.json(), { queuedCount: 65, clearedCount: 65, retryAt: cooldown.toISOString() });
+    const update = statements.find(statement => statement.sql.includes("UPDATE"))!;
+    assert.match(update.sql, /resolved_at.*is null/i);
+    assert.match(update.sql, /dismissed_at.*is null/i);
+    assert.match(update.sql, /retry_requested_at.*is null/i);
+    assert.match(update.sql, /source_root_id/);
+    assert.match(update.sql, /destination_root_id/);
+    assert.match(update.sql, /ancestor_ids.*@>/);
+    assert.doesNotMatch(update.sql, /limit/i);
+    assert.ok(update.params.includes(engineConfig.destinationFolderId));
+    assert.ok(update.params.includes(JSON.stringify([exclusion.id])));
+    const repeated = await fetch(url, { method: "POST" });
+    assert.equal(repeated.status, 202);
+    assert.equal(RetryAllSyncFilesResponse.parse(await repeated.json()).queuedCount, 0);
+    const clearAll = await fetch(`http://127.0.0.1:${address.port}/failures/dismiss-all`, { method: "POST" });
+    assert.equal(clearAll.status, 200);
+    assert.equal(DismissAllSyncFailuresResponse.parse(await clearAll.json()).clearedCount, 3);
+    const clearFilter = statements.at(-1)!;
+    assert.match(clearFilter.sql, /resolved_at.*is null/i);
+    assert.match(clearFilter.sql, /dismissed_at.*is null/i);
+    locked = false;
+    const before = statements.length;
+    const blocked = await fetch(url, { method: "POST" });
+    assert.equal(blocked.status, 409);
+    assert.equal(statements.length, before + 1, "Lock refusal must prevent the queue update");
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
 });
 
 test("SharePoint-only items are logged as destination conflicts, not invented source files", async () => {

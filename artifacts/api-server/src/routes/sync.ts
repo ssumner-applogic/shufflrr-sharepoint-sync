@@ -28,6 +28,7 @@ import { SYNC_LOCK_ID } from "../lib/sync-runner";
 import { ProviderBackoffError } from "@workspace/shufflrr/http-policy";
 import { exclusionNoticeKey, validateFolderExclusions } from "../lib/sync-exclusions";
 import { syncFailureRoutes } from "./sync-failures";
+import { setSyncEnabledState } from "../lib/sync-control";
 
 const router: IRouter = Router();
 
@@ -364,26 +365,7 @@ router.put("/sync/enabled", async (req, res): Promise<void> => {
   }
   try {
     const { db } = await import("@workspace/db");
-    await db.transaction(async tx => {
-      const lockResult = await tx.execute(sql`SELECT pg_try_advisory_xact_lock(${SYNC_LOCK_ID}) AS locked`);
-      const locked = (lockResult.rows[0] as { locked?: boolean } | undefined)?.locked === true;
-      if (!locked) throw new AccessError("SyncRunning", "Wait for the current sync run to finish before changing sync state.", 409);
-
-      const [config] = await tx.select().from(syncConfigTable).where(eq(syncConfigTable.id, 1)).limit(1);
-      if (parsed.data.enabled && (!config?.destinationFolderId || !config.sourceFolders.length)) {
-        throw new AccessError("SyncNotConfigured", "Save a SharePoint destination and Shufflrr folders before enabling sync.", 400);
-      }
-      await tx.insert(syncConfigTable).values({ id: 1, enabled: parsed.data.enabled })
-        .onConflictDoUpdate({ target: syncConfigTable.id, set: {
-          enabled: parsed.data.enabled,
-          // An enable transition is due now, never one polling interval from now.
-          // Repeating an enable request must not bypass the existing schedule.
-          nextRunAt: parsed.data.enabled && !config?.enabled
-            ? sql`greatest(now(), coalesce(${syncConfigTable.providerRetryAt}, now()))`
-            : config?.nextRunAt ?? null,
-          updatedAt: new Date(),
-        } });
-    });
+    await setSyncEnabledState(db, parsed.data.enabled);
     res.json(await responseConfig());
   } catch (error) {
     operationError(req, res, error);

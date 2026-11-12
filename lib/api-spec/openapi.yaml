@@ -97,13 +97,34 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [failures, total, nextAfter]
+                required: [failures, total, nextAfter, retryableCount, canRetryAll]
                 properties:
                   failures:
                     type: array
                     items: { $ref: "#/components/schemas/SyncFileFailure" }
                   total: { type: integer }
                   nextAfter: { type: integer, nullable: true }
+                  retryableCount: { type: integer }
+                  canRetryAll: { type: boolean }
+  /sync/failures/retry-all:
+    post:
+      operationId: retryAllSyncFiles
+      tags: [Sync]
+      summary: Queue all visible unresolved in-scope files after a run finishes
+      responses:
+        "202":
+          description: Retries queued across all pages; respects provider cooldowns
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [queuedCount, clearedCount, retryAt]
+                properties:
+                  queuedCount: { type: integer }
+                  clearedCount: { type: integer }
+                  retryAt: { type: string, format: date-time }
+        "409":
+          description: A sync is currently running
   /sync/failures/{id}/dismiss:
     put:
       operationId: dismissSyncFileFailure
@@ -112,6 +133,21 @@ paths:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       responses:
         "204": { description: Failure banner dismissed }
+  /sync/failures/dismiss-all:
+    post:
+      operationId: dismissAllSyncFailures
+      tags: [Sync]
+      summary: Dismiss every currently visible unresolved file notice
+      responses:
+        "200":
+          description: The number of notices dismissed across all pages
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clearedCount]
+                properties:
+                  clearedCount: { type: integer }
   /sync/failures/{id}/retry:
     post:
       operationId: retrySyncFile

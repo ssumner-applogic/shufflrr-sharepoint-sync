@@ -2,6 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { ProviderGate, requestSpacing } from "@workspace/shufflrr/http-policy";
 import type { AccessReport, FolderListing } from "@workspace/api-zod";
 import { MAX_SYNC_FILE_BYTES, FileTransferError, uploadChunks, type SyncFileStream } from "./sync-transfer";
+import { fileSizeDescription, uploadRejection } from "./sync-upload-diagnostics";
 
 export const libraryUrl = "https://sandvine.sharepoint.com/sites/ApplogicKnowledgeBase/Shared%20Documents";
 const graphRoot = "https://graph.microsoft.com/v1.0";
@@ -21,7 +22,8 @@ const keys = ["MICROSOFT_TENANT_ID", "MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SE
 export const missingCredentials = () => keys.filter(key => !process.env[key]);
 
 export class AccessError extends Error {
-  constructor(public code: string, message: string, public status = 502, public requestId?: string) {
+  constructor(public code: string, message: string, public status = 502, public requestId?: string,
+    public uploadFailure?: ReturnType<typeof uploadRejection>) {
     super(message);
   }
 }
@@ -100,7 +102,7 @@ async function graph<T = GraphPage>(path: string, init: RequestInit = {}): Promi
     const code = data?.error?.code || "GraphError";
     throw new AccessError(String(code),
       `Microsoft Graph returned HTTP ${res.status}: ${String(code || "request failed")}.`,
-      res.status, res.headers.get("request-id") || undefined);
+      res.status, res.headers.get("request-id") || undefined, uploadRejection(res.status, data));
   }
   return data as T;
 }
@@ -424,7 +426,7 @@ export async function uploadSyncFile(
   validateItemName(name);
   const size = bytes instanceof Uint8Array ? bytes.byteLength : bytes.size;
   if (size > MAX_SYNC_FILE_BYTES) {
-    throw new AccessError("SyncLimit", "Files larger than 300 MB are not supported by this sync.", 413);
+    throw new FileTransferError(`The source file is ${fileSizeDescription(size)}; the app's sync limit is 300 MB (300,000,000 bytes).`, 413);
   }
   const { driveId } = await location();
   const resolvedParentId = parentId === "root" ? await getRootId(driveId) : parentId;
@@ -487,6 +489,12 @@ export async function uploadSyncFile(
   } catch (error) {
     if (!existingId && error instanceof AccessError && error.status === 412) {
       throw new AccessError("SyncConflict", "A SharePoint item appeared at this path during sync; it was left unchanged.", 409);
+    }
+    // Keep the runner's existing conflict path (leave pre-existing items untouched).
+    if (error instanceof AccessError && error.status === 409) throw error;
+    if (error instanceof AccessError) {
+      const rejection = error.uploadFailure ?? uploadRejection(error.status, { code: error.code });
+      throw new FileTransferError(rejection.message, rejection.status);
     }
     throw error;
   }

@@ -428,6 +428,18 @@ export type GetSyncFailures200 = {
   total: number;
   /** @nullable */
   nextAfter: number | null;
+  retryableCount: number;
+  canRetryAll: boolean;
+};
+
+export type RetryAllSyncFiles202 = {
+  queuedCount: number;
+  clearedCount: number;
+  retryAt: string;
+};
+
+export type DismissAllSyncFailures200 = {
+  clearedCount: number;
 };
 
 export type RetrySyncFile202 = {

@@ -284,7 +284,19 @@ export const GetSyncFailuresResponse = zod.object({
 }))
 })),
   "total": zod.number().int(),
-  "nextAfter": zod.number().int().nullable()
+  "nextAfter": zod.number().int().nullable(),
+  "retryableCount": zod.number().int(),
+  "canRetryAll": zod.boolean()
+})
+
+
+/**
+ * @summary Queue all visible unresolved in-scope files after a run finishes
+ */
+export const RetryAllSyncFilesResponse = zod.object({
+  "queuedCount": zod.number().int(),
+  "clearedCount": zod.number().int(),
+  "retryAt": zod.coerce.date()
 })
 
 
@@ -296,6 +308,14 @@ export const DismissSyncFileFailureParams = zod.object({
 })
 
 export const DismissSyncFileFailureResponse = zod.void()
+
+
+/**
+ * @summary Dismiss every currently visible unresolved file notice
+ */
+export const DismissAllSyncFailuresResponse = zod.object({
+  "clearedCount": zod.number().int()
+})
 
 
 

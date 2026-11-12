@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ExternalLink, FolderOpen, RefreshCw, X } from "lucide-react";
+import { AlertCircle, ChevronDown, ExternalLink, FolderOpen, RefreshCw, X } from "lucide-react";
 import {
   dismissSyncFileFailure,
+  dismissAllSyncFailures,
   getSyncFailures,
   getGetSyncFailuresQueryKey,
   retrySyncFile,
+  retryAllSyncFiles,
   type SyncFileFailure,
 } from "@workspace/api-client-react";
 import { groupSyncFailures } from "./failureGrouping";
@@ -83,6 +85,7 @@ export function SyncFailureBanners({ active }: { active: boolean }) {
   const [after, setAfter] = useState<number | undefined>();
   const [previous, setPrevious] = useState<Array<number | undefined>>([]);
   const [queued, setQueued] = useState<{ id: number; text: string }>();
+  const [collapsed, setCollapsed] = useState(false);
   const params = { limit: 20, ...(after ? { after } : {}) };
   const query = useQuery({
     queryKey: getGetSyncFailuresQueryKey(params),
@@ -105,36 +108,86 @@ export function SyncFailureBanners({ active }: { active: boolean }) {
       await refresh();
     },
   });
+  const [bulkMessage, setBulkMessage] = useState("");
+  const clearAll = useMutation({
+    mutationFn: () => dismissAllSyncFailures(),
+    onSuccess: async result => {
+      setBulkMessage(`${result.clearedCount} file notice${result.clearedCount === 1 ? "" : "s"} cleared.`);
+      setAfter(undefined);
+      setPrevious([]);
+      await refresh();
+    },
+  });
+  const retryAll = useMutation({
+    mutationFn: () => retryAllSyncFiles(),
+    onSuccess: async result => {
+      const cooldown = new Date(result.retryAt).getTime() > Date.now() + 1000;
+      setBulkMessage(`${result.clearedCount} file notice${result.clearedCount === 1 ? "" : "s"} cleared. ` +
+        `${result.queuedCount} file${result.queuedCount === 1 ? "" : "s"} queued for retry` +
+        (cooldown ? ` after provider cooldown (${new Date(result.retryAt).toLocaleString()})` : "") +
+        ". Automatic sync settings are unchanged.");
+      setAfter(undefined);
+      setPrevious([]);
+      await refresh();
+    },
+  });
   if (!active) return null;
   if (query.isError) return <div className="rounded border p-3 text-sm text-destructive" role="alert">
     File failure notices could not be loaded.
     <button className="ml-2 underline" onClick={() => void query.refetch()}>Retry loading</button>
   </div>;
   const data = query.data;
-  if (!data || (!data.total && !retry.error && !dismiss.error)) return null;
-  const error = retry.error ?? dismiss.error;
+  if (!data || (!data.total && !retry.error && !dismiss.error && !retryAll.error && !clearAll.error && !bulkMessage)) return null;
+  const error = retry.error ?? dismiss.error ?? retryAll.error ?? clearAll.error;
   const { notAttempted: skipped, needsAction } = groupSyncFailures(data.failures);
   const retryFile = (id: number) => { dismiss.reset(); retry.mutate(id); };
   const dismissFile = (id: number) => { retry.reset(); dismiss.mutate(id); };
 
   return <section className="space-y-2" aria-label="Files needing attention" data-testid="sync-file-failures">
-    <h3 className="text-sm font-medium">{data.total} file{data.total === 1 ? "" : "s"} needing attention</h3>
-    <p className="text-xs text-muted-foreground">
-      Showing {data.failures.length}: {needsAction.length} with issues{skipped.length > 0 && ` · ${skipped.length} not attempted`}
-    </p>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <details open={!collapsed} onToggle={event => setCollapsed(!event.currentTarget.open)} className="min-w-0 flex-1">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ChevronDown className={`size-4 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`} aria-hidden="true" />
+          <span>{data.total ? `${data.total} file${data.total === 1 ? "" : "s"} needing attention` : "File attention"}</span>
+          {data.total > 0 && <span className="text-xs font-normal text-muted-foreground">
+            Showing {data.failures.length}: {needsAction.length} with issues{skipped.length > 0 && ` · ${skipped.length} not attempted`}
+          </span>}
+        </summary>
+      </details>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" data-testid="button-retry-all-sync-files"
+          disabled={!data.canRetryAll || retryAll.isPending || retry.isPending || dismiss.isPending || clearAll.isPending}
+          title="Queue retries for all eligible failures across every page, then clear the current notices."
+          onClick={() => { retry.reset(); dismiss.reset(); clearAll.reset(); setBulkMessage(""); retryAll.mutate(); }}
+          className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-xs font-medium disabled:opacity-50">
+          <RefreshCw className={`size-3 ${retryAll.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+          {retryAll.isPending ? "Queuing retries…" : "Retry all failed"}
+          {data.retryableCount > 0 && ` (${data.retryableCount})`}
+        </button>
+        <button type="button" data-testid="button-clear-all-sync-failures"
+          disabled={!data.total || clearAll.isPending || retryAll.isPending || retry.isPending || dismiss.isPending}
+          title="Dismiss all unresolved file notices across every page."
+          onClick={() => { retry.reset(); dismiss.reset(); retryAll.reset(); setBulkMessage(""); clearAll.mutate(); }}
+          className="rounded-md border bg-background px-3 py-2 text-xs font-medium disabled:opacity-50">
+          {clearAll.isPending ? "Clearing…" : "Clear all"}
+        </button>
+      </div>
+    </div>
+    {bulkMessage && <p role="status" className="text-xs text-muted-foreground">{bulkMessage}</p>}
+    {!collapsed && <div className="space-y-2" data-testid="sync-failure-panel-content">
     {needsAction.map(file => <FailureItem key={file.id} file={file} retry={retryFile} dismiss={dismissFile}
-      retryPending={retry.isPending && retry.variables === file.id} dismissPending={dismiss.isPending} queued={queued} />)}
+      retryPending={retryAll.isPending || (retry.isPending && retry.variables === file.id)} dismissPending={dismiss.isPending} queued={queued} />)}
     {skipped.length > 0 && <details className="rounded-lg border border-muted-foreground/25 bg-muted/20 p-3"
       data-testid="sync-not-attempted-group">
       <summary className="cursor-pointer text-sm font-medium">
         {skipped.length} file{skipped.length === 1 ? "" : "s"} not attempted in the latest run
       </summary>
       <p className="mt-2 text-xs text-muted-foreground">
-        These files were skipped after the run stopped. Expand a file to review its recorded issue history.
+        These files were not attempted because the run stopped or a parent folder was blocked. Expand a file to review its recorded issue history.
       </p>
       <div className="mt-2 space-y-2">
         {skipped.map(file => <FailureItem key={file.id} file={file} compact retry={retryFile} dismiss={dismissFile}
-          retryPending={retry.isPending && retry.variables === file.id} dismissPending={dismiss.isPending} queued={queued} />)}
+          retryPending={retryAll.isPending || (retry.isPending && retry.variables === file.id)} dismissPending={dismiss.isPending} queued={queued} />)}
       </div>
     </details>}
     {error && <p className="text-sm text-destructive" role="alert">{error instanceof Error ? error.message : "The action failed. Try again."}</p>}
@@ -145,6 +198,7 @@ export function SyncFailureBanners({ active }: { active: boolean }) {
       <button disabled={data.nextAfter === null || query.isFetching} onClick={() => {
         setPrevious([...previous, after]); setAfter(data.nextAfter ?? undefined);
       }}>Next</button>
+    </div>}
     </div>}
   </section>;
 }

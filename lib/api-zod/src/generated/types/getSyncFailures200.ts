@@ -12,4 +12,6 @@ export type GetSyncFailures200 = {
   total: number;
   /** @nullable */
   nextAfter: number | null;
+  retryableCount: number;
+  canRetryAll: boolean;
 };

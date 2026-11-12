@@ -28,6 +28,10 @@ Before deploying this version's API and worker, run `pnpm db:migrate` with the i
 
 The worker checks PostgreSQL for newly enabled sync within approximately one second, independent of the selected provider polling interval. These database checks do not call the content providers. Provider cooldowns and the advisory lock remain authoritative. The activity history retains the latest 50 runs and paginates detailed events through authenticated `/api/sync/runs` and `/api/sync/events` routes. Paths and provider continuation links are never written to public logs.
 
+The file-error continuation and failure-panel **Clear all / Retry all failed** updates require deploying the updated API/frontend and private worker together; they add no environment variables or migrations. Known file-local failures allow independent files to finish with a partial run status, but defer mirror deletions. Shared provider/permission failures and failed folder prerequisites still stop the run. Bulk retries queue all eligible undismissed unresolved files across pages, then dismiss all current notices; retry failures reappear. The worker uses the existing sequential targeted-retry queue and respects the saved scope and provider cooldowns without enabling automatic sync.
+
+Deploy API/frontend and worker together for cooperative **Pause sync / Start sync** controls. Pausing updates the existing shared enable flag immediately; the worker stops at a safe item boundary rather than aborting a partial upload. This update needs no migration or new variables. An old worker will finish its entire run instead of honoring the new checkpoints.
+
 The production API serves the compiled SharePoint viewer and `/api` routes from one stateless Node.js process, binding to `0.0.0.0` on the host-provided `PORT`. Sync uses a separate worker process and durable PostgreSQL state.
 
 ## Railway

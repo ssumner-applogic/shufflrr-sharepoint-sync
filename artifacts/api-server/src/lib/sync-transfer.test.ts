@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { MAX_SYNC_FILE_BYTES, UPLOAD_CHUNK_BYTES, sourceFileStream, uploadChunks } from "./sync-transfer";
+import { MAX_SYNC_FILE_BYTES, UPLOAD_CHUNK_BYTES, sourceFileStream, uploadChunks, FileTransferError } from "./sync-transfer";
+import { readUploadResponse, uploadRejection } from "./sync-upload-diagnostics";
 import { shufflrrFailureLinks } from "./sync-file-failures";
 import { SyncRunJournal } from "./sync-log";
 import type { SyncFileFailureStore } from "./sync-file-failures";
@@ -68,9 +69,62 @@ test("truncated and oversized streams cannot submit a final fragment", async () 
 });
 test("an unexpected fragment acknowledgement or unverified final size is not success", async () => {
   await assert.rejects(uploadChunks({ body: byteStream(UPLOAD_CHUNK_BYTES + 1), size: UPLOAD_CHUNK_BYTES + 1 },
-    async () => Response.json({ nextExpectedRanges: ["0-"] }, { status: 202 })), /did not confirm/);
+    async () => Response.json({ nextExpectedRanges: ["0-"] }, { status: 202 })), /expected next byte offset/);
   await assert.rejects(uploadChunks({ body: byteStream(3), size: 3 },
-    async () => Response.json({ id: "x", name: "x", size: 2 }, { status: 201 })), /did not confirm/);
+    async () => Response.json({ id: "x", name: "x", size: 2 }, { status: 201 })), /size does not match/);
+});
+test("size-limit errors distinguish the app limit from a destination rejection", async () => {
+  assert.throws(() => sourceFileStream(new Response("abc"), 350_000_000),
+    /350 MB \(350,000,000 bytes\).*300 MB \(300,000,000 bytes\)/);
+  await assert.rejects(uploadChunks({ body: byteStream(3), size: 3 }, async () =>
+    Response.json({ error: { code: "badRequest", innerError: { code: "maxFileSizeExceeded" } } }, { status: 400 })),
+    (error: unknown) => error instanceof FileTransferError && error.status === 413 &&
+      /destination's file-size limit/.test(error.message));
+  await assert.rejects(uploadChunks({ body: byteStream(3), size: 3 }, async () =>
+    new Response("arbitrary proxy error", { status: 413 })), /too large.*300 MB.*lower limit/);
+});
+test("safe upload reasons explain quota, locks, name conflicts and expired sessions without raw messages", () => {
+  for (const [code, expected] of [
+    ["quotaLimitReached", /storage quota/], ["resourceLocked", /locked or checked out/],
+    ["nameAlreadyExists", /already exists/], ["uploadSessionExpired", /session expired/],
+  ] as const) {
+    const reason = uploadRejection(400, { error: { code: "badRequest", innererror: {
+      code, message: "PRIVATE_PATH_OR_SIGNED_UPLOAD_URL",
+    } } });
+    assert.match(reason.message, expected);
+    assert.doesNotMatch(reason.message, /PRIVATE_PATH/);
+  }
+  const unknown = uploadRejection(400, { error: { code: "PRIVATE_IDENTIFIER", message: "PRIVATE_PATH" } });
+  assert.match(unknown.message, /No more specific reason/);
+  assert.doesNotMatch(unknown.message, /PRIVATE/);
+});
+test("upload diagnostics preserve shared failure status even if a nested code suggests an item error", () => {
+  for (const status of [401, 403, 429, 503]) {
+    assert.equal(uploadRejection(status, { error: { code: "fileTooLarge" } }).status, status);
+  }
+});
+test("incomplete, missing-detail and unreadable confirmations explain what could not be verified", async () => {
+  for (const [response, expected] of [
+    [Response.json({ nextExpectedRanges: ["3-"] }, { status: 202 }), /still reports.*incomplete.*HTTP 202/],
+    [Response.json({ id: "x", size: 3 }, { status: 201 }), /missing valid file details/],
+    [new Response("<html>PRIVATE_PROVIDER_PAGE</html>", { status: 200 }), /unreadable or unexpected/],
+  ] as const) {
+    await assert.rejects(uploadChunks({ body: byteStream(3), size: 3 }, async () => response),
+      (error: unknown) => error instanceof FileTransferError &&
+        expected.test(error.message) && /root cause was not provided/.test(error.message) &&
+        !error.message.includes("PRIVATE"));
+  }
+});
+test("diagnostic responses are bounded and canceled rather than reading an unlimited body", async () => {
+  let pulls = 0;
+  let canceled = false;
+  const response = new Response(new ReadableStream<Uint8Array>({
+    pull(controller) { pulls++; controller.enqueue(new Uint8Array(8192)); },
+    cancel() { canceled = true; },
+  }));
+  assert.equal(await readUploadResponse(response), undefined);
+  assert.ok(pulls < 10);
+  assert.equal(canceled, true);
 });
 test("a rejected upload is attempted once, never ambiguously replayed", async () => {
   let calls = 0;
