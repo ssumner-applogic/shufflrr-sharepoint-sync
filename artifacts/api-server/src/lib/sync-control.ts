@@ -91,7 +91,7 @@ export async function requestSyncNow(db: Database, syncLockId: number): Promise<
   await db.transaction(async tx => {
     const lockResult = await tx.execute(sql`SELECT pg_try_advisory_xact_lock(${syncLockId}) AS locked`);
     const locked = (lockResult.rows[0] as { locked?: boolean } | undefined)?.locked === true;
-    if (!locked) throw new AccessError("SyncRunning", "Wait for the current sync run to finish before requesting another.", 409);
+    if (!locked) throw new AccessError("SyncRunning", "A sync is already running. Wait for it to finish, then try Sync now again.", 409);
 
     const [config] = await tx.select({
       enabled: syncConfigTable.enabled,

@@ -3,10 +3,29 @@ import { test } from "node:test";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { syncConfigTable, syncFileFailuresTable, syncItemsTable, syncOrphanNoticesTable, type SyncConfig } from "@workspace/db/schema";
-import { disconnectSyncFolders, setSyncEnabledState } from "./sync-control";
+import { disconnectSyncFolders, requestSyncNow, setSyncEnabledState } from "./sync-control";
 import { AccessError } from "./sharepoint";
 
 type Database = typeof import("@workspace/db")["db"];
+
+test("Sync now rejects an active job with retry-after-completion guidance and never queues work", async () => {
+  const f = fixture({ locked: false, enabled: true, running: true });
+  await assert.rejects(requestSyncNow(f.database, 12345),
+    (error: unknown) => error instanceof AccessError && error.status === 409 &&
+      error.code === "SyncRunning" && /finish, then try Sync now again/.test(error.message));
+  assert.equal(f.configReads(), 0);
+  assert.equal(f.writes.length, 0);
+  assert.deepEqual(f.config(), f.original);
+});
+
+test("Sync now is accepted once the run lock is free and keeps the saved interval", async () => {
+  const f = fixture({ locked: true, enabled: true });
+  await requestSyncNow(f.database, 12345);
+  assert.equal(f.writes.length, 1);
+  assert.equal(f.config()?.pollIntervalSeconds, 300);
+  assert.equal(f.config()?.enabled, true);
+  assert.match(new PgDialect().sqlToQuery(f.writes[0].nextRunAt as SQL).sql, /greatest\(now\(\)/);
+});
 
 function fixture(options: {
   locked?: boolean; enabled?: boolean; running?: boolean; absent?: boolean; failNotice?: boolean;

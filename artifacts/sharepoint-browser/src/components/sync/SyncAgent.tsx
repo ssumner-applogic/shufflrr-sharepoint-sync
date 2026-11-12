@@ -17,6 +17,7 @@ import {
   getGetSyncConfigQueryKey,
   getGetSyncDashboardQueryKey,
   getGetSyncFailuresQueryKey,
+  getGetSyncRunsQueryKey,
   getListShufflrrItemsQueryKey,
   listItems,
   listShufflrrItems,
@@ -37,6 +38,7 @@ import { SyncDisconnectControl } from "./SyncDisconnectControl";
 import { SyncIgnoredFiles } from "./SyncIgnoredFiles";
 import { SyncFailureBanners } from "./SyncFailureBanners";
 import { currentExclusionAncestors, folderSelectionState, toggleFolderSelection } from "./folder-selection";
+import { shouldClearBusySyncError } from "./sync-request-state";
 
 function errorText(error: unknown): string | null {
   if (error instanceof Error) return error.message;
@@ -409,9 +411,25 @@ export function SyncAgent({ active }: { active: boolean }) {
     onSuccess: async updated => {
       await queryClient.cancelQueries({ queryKey: getGetSyncConfigQueryKey() });
       queryClient.setQueryData(getGetSyncConfigQueryKey(), updated);
-      await queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getGetSyncRunsQueryKey() }),
+      ]);
+    },
+    // A worker can start between the last poll and this click. Show its live
+    // progress immediately after the server rejects the competing request.
+    onError: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getGetSyncRunsQueryKey() }),
+      ]);
     },
   });
+  useEffect(() => {
+    if (shouldClearBusySyncError(runNowMutation.error, config?.lastRunStatus,
+      configQuery.dataUpdatedAt, runNowMutation.submittedAt)) runNowMutation.reset();
+  }, [runNowMutation.error, runNowMutation.reset, runNowMutation.submittedAt,
+    config?.lastRunStatus, configQuery.dataUpdatedAt]);
   const dismissMutation = useMutation({
     mutationFn: (id: number) => dismissSyncOrphan(id),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }); },
@@ -496,14 +514,14 @@ export function SyncAgent({ active }: { active: boolean }) {
             disabled={!config?.enabled || !config.configured || config.lastRunStatus === "running" ||
               runNowMutation.isPending || saveMutation.isPending || intervalMutation.isPending || enabledMutation.isPending || disconnectMutation.isPending}
             title={!config?.enabled ? "Start sync before requesting an immediate run."
-              : config.lastRunStatus === "running" ? "A sync run is already in progress."
+              : config.lastRunStatus === "running" ? "A sync is running. Try Sync now again once it finishes."
                 : "Queue a full sync now; provider cooldowns are still respected."}
             aria-busy={runNowMutation.isPending}
             className="inline-flex items-center gap-2 rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-secondary disabled:opacity-50"
             data-testid="button-sync-now"
           >
             <RefreshCw className={`size-4 ${runNowMutation.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
-            {runNowMutation.isPending ? "Queueing…" : "Sync now"}
+            {runNowMutation.isPending ? "Queueing…" : config?.lastRunStatus === "running" ? "Sync running" : "Sync now"}
           </button>
           <button
             type="button"

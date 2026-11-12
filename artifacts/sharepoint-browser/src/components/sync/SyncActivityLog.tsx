@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { selectActivityRun } from "./activity-selection";
+import { selectActivityRun, selectRunningActivityRun } from "./activity-selection";
 import { ChevronDown, ChevronLeft, ChevronRight, History, Loader2 } from "lucide-react";
 import {
   getGetSyncRunEventsQueryKey,
@@ -68,19 +68,19 @@ function EventRow({ entry }: { entry: SyncLogEntry }) {
   );
 }
 
-function RunningFileProgress({ run }: { run: SyncRun }) {
-  const progress = run.summary?.fileProgress;
+function RunningFileProgress({ run }: { run: SyncRun | null }) {
+  const progress = run?.summary?.fileProgress;
   const hasTotal = !!progress && Number.isSafeInteger(progress.totalFiles) && progress.totalFiles > 0;
   const processed = progress?.processedFiles ?? 0;
   const total = progress?.totalFiles ?? 0;
   const percent = hasTotal ? Math.min(100, Math.round((processed / total) * 100)) : 0;
 
   return (
-      <div className="ml-auto flex min-w-0 items-center gap-2 sm:w-48" data-testid="sync-run-file-progress">
+      <div className="flex w-full min-w-0 items-center gap-2 sm:ml-auto sm:w-64" data-testid="sync-run-file-progress">
       <div
         className="h-1.5 flex-1 overflow-hidden rounded-full bg-sky-100"
         role="progressbar"
-        aria-label={hasTotal ? `Sync file progress: ${processed} of ${total} files` : "Scanning sync files"}
+        aria-label={hasTotal ? `Sync file progress: ${processed} of ${total} files` : "Sync running; waiting for file count"}
         aria-valuemin={0}
         aria-valuemax={hasTotal ? total : 100}
         aria-valuenow={hasTotal ? Math.min(processed, total) : undefined}
@@ -91,7 +91,7 @@ function RunningFileProgress({ run }: { run: SyncRun }) {
         />
       </div>
       <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground" aria-live="polite">
-        {hasTotal ? `${Math.min(processed, total)} / ${total} files` : "Scanning files…"}
+        {hasTotal ? `${Math.min(processed, total)} / ${total} files` : "Waiting for file count…"}
       </span>
     </div>
   );
@@ -156,8 +156,9 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
   const legacy = config.lastRunConflicts.length > 0 && !runsQuery.isLoading && !runsQuery.isError && !legacyCovered
     ? config.lastRunConflicts : [];
 
-  const activeRun = runs.find(r => r.status === "running") ?? null;
-  const runningNow = selectedRun?.status === "running";
+  const activeRun = selectRunningActivityRun(runs);
+  // Live execution is independent of the historical run selected for review.
+  const runningNow = !!activeRun || config.lastRunStatus === "running";
 
   return (
     <section className="rounded-md border bg-card" aria-labelledby="sync-activity-heading" data-testid="sync-activity-log">
@@ -171,15 +172,30 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
         {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
         <History className="size-4 text-muted-foreground" aria-hidden="true" />
         <span id="sync-activity-heading" className="text-sm font-medium">Activity log</span>
-        {selectedRun && <Badge tone={runMeta[selectedRun.status].tone}>{runMeta[selectedRun.status].label}</Badge>}
+        {runningNow
+          ? <Badge tone={runMeta.running.tone}>Running</Badge>
+          : selectedRun && <Badge tone={runMeta[selectedRun.status].tone}>{runMeta[selectedRun.status].label}</Badge>}
         {runningNow && <Loader2 className="size-3.5 animate-spin text-sky-700" aria-label="Run in progress" />}
-        {runningNow && selectedRun && <RunningFileProgress run={selectedRun} />}
-        {activeRun && activeRun.id !== effectiveRunId && <span className="text-xs text-sky-700">Another run is in progress</span>}
         <span className="ml-auto text-xs text-muted-foreground">
           {runsQuery.isLoading ? "Loading runs…" : `${runs.length} run${runs.length === 1 ? "" : "s"} (latest 50 kept)`}
           {legacy.length > 0 && ` · ${legacy.length} legacy item${legacy.length === 1 ? "" : "s"}`}
         </span>
       </button>
+
+      {runningNow && (
+        <div className="flex flex-wrap items-center gap-2 border-t bg-sky-50/60 px-4 py-3 text-xs" role="status" data-testid="sync-live-run-status">
+          <div className="min-w-0">
+            <p className="font-medium text-sky-800">A sync is running. Wait for it to finish before starting another.</p>
+            {activeRun && <p className="mt-1 text-muted-foreground">Started {fmt(activeRun.startedAt)}</p>}
+          </div>
+          <RunningFileProgress run={activeRun} />
+          {activeRun && activeRun.id !== effectiveRunId && (
+            <button type="button" className="rounded border bg-card px-2 py-1"
+              onClick={() => { setRunId(activeRun.id); setFollowLatest(false); setOpen(true); }}
+              data-testid="button-view-running-sync-run">View running run</button>
+          )}
+        </div>
+      )}
 
       {open && (
         <div className="space-y-3 border-t px-4 py-3">
