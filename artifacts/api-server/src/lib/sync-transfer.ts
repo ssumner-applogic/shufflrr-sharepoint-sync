@@ -7,6 +7,31 @@ export class FileTransferError extends Error {
   constructor(message: string, readonly status?: number) { super(message); }
 }
 export interface SyncFileStream { body: ReadableStream<Uint8Array>; size: number }
+export interface UploadedFile { id: string; name: string; size: number; cTag?: string }
+
+function validUploadedFile(value: object): value is UploadedFile {
+  return "id" in value && typeof value.id === "string" && value.id.length > 0 &&
+    "name" in value && typeof value.name === "string" && value.name.length > 0 &&
+    (!("cTag" in value) || typeof value.cTag === "string") &&
+    "size" in value && typeof value.size === "number" && Number.isSafeInteger(value.size) && value.size > 0;
+}
+
+/** Graph returns missing ranges with either bounded or open ends, not fixed upload chunk sizes. */
+function acknowledgesNextOffset(ranges: unknown, expected: number, total: number): boolean {
+  if (!Array.isArray(ranges) || ranges.length === 0) return false;
+  let firstMissing = Infinity;
+  for (const range of ranges) {
+    const match = typeof range === "string" ? /^(\d+)-(\d*)$/.exec(range) : null;
+    if (!match) return false;
+    const start = Number(match[1]);
+    const end = match[2] === "" ? total - 1 : Number(match[2]);
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
+      start < 0 || start >= total || end < start || end >= total) return false;
+    firstMissing = Math.min(firstMissing, start);
+  }
+  // Never skip ahead or silently resend bytes when the server disagrees with our sequential offset.
+  return firstMissing === expected;
+}
 
 export function sourceFileStream(response: Response, metadataSize?: number): SyncFileStream {
   const header = response.headers.get("content-length");
@@ -26,7 +51,8 @@ export function sourceFileStream(response: Response, metadataSize?: number): Syn
 export async function uploadChunks(
   source: SyncFileStream,
   send: (chunk: Uint8Array, start: number, total: number) => Promise<Response>,
-): Promise<{ id: string; name: string; size: number; cTag?: string }> {
+  verifySizeChange?: (completed: UploadedFile) => Promise<boolean>,
+): Promise<UploadedFile> {
   if (!Number.isSafeInteger(source.size) || source.size < 1)
     throw new FileTransferError("The source file has an invalid size. A positive whole-number byte count is required.");
   if (source.size > MAX_SYNC_FILE_BYTES)
@@ -64,25 +90,20 @@ export async function uploadChunks(
       if (!result || typeof result !== "object") {
         throw new FileTransferError(`SharePoint returned an unreadable or unexpected upload response (HTTP ${response.status}). The root cause was not provided; upload success could not be verified.`);
       }
-      if (last && (response.status === 200 || response.status === 201) &&
-        typeof result === "object" && result !== null &&
-        "id" in result && typeof result.id === "string" &&
-        "name" in result && typeof result.name === "string" &&
-        (!("cTag" in result) || typeof result.cTag === "string") &&
-        "size" in result && result.size === source.size) {
-        return result as { id: string; name: string; size: number; cTag?: string };
-      }
       if (last && (response.status === 200 || response.status === 201)) {
-        if ("size" in result && typeof result.size === "number" && Number.isSafeInteger(result.size) && result.size >= 0 &&
-          result.size !== source.size)
-          throw new FileTransferError(`SharePoint reported ${fileSizeDescription(result.size)}, but the source is ${fileSizeDescription(source.size)}. The uploaded file size does not match; sync was not marked successful.`);
-        throw new FileTransferError(`SharePoint's completion response is missing valid file details (HTTP ${response.status}). The root cause was not provided; upload success could not be verified.`);
+        if (!validUploadedFile(result))
+          throw new FileTransferError(`SharePoint's completion response is missing valid file details (HTTP ${response.status}). The root cause was not provided; upload success could not be verified.`);
+        if (result.size === source.size) return result;
+        // A narrowly scoped provider verification may confirm Office property processing.
+        // It cannot override truncated source streams, missing fragments or incomplete commits.
+        if (verifySizeChange && await verifySizeChange(result)) return result;
+        throw new FileTransferError(`SharePoint reported ${fileSizeDescription(result.size)}, but the source is ${fileSizeDescription(source.size)}. The uploaded file size does not match; sync was not marked successful.`);
       }
       if (last && response.status === 202)
         throw new FileTransferError("SharePoint still reports the upload as incomplete after the final fragment (HTTP 202). The root cause was not provided; retry to start a new upload session.");
       if (response.status !== 202 ||
-        !("nextExpectedRanges" in result) || !Array.isArray(result.nextExpectedRanges) ||
-        result.nextExpectedRanges[0] !== `${offset + filled}-`) {
+        !("nextExpectedRanges" in result) ||
+        !acknowledgesNextOffset(result.nextExpectedRanges, offset + filled, source.size)) {
         throw new FileTransferError(`SharePoint did not acknowledge the expected next byte offset (${offset + filled}) after the upload fragment (HTTP ${response.status}). Retry to start a new upload session.`);
       }
       offset += filled;

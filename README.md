@@ -14,7 +14,21 @@ Partial progress and conflict details survive later failures. Failed items inclu
 
 File notices are grouped by current outcome: actionable failures are shown individually, while files not attempted after a run stops are collected in a collapsed group. Expand a file's issue history to review recent failed, conflicting, and skipped events. Those records follow the same 50-run retention window as the activity log; older entries are not retained.
 
+Each file notice links to its Shufflrr file and to Browse filtered by its parent folder. **Open target file in SharePoint** and **Open target folder in SharePoint** resolve Microsoft Graph browser links on demand, using saved item mappings or the expected destination path. If a failed upload has not created the destination file or folder, the notice explains that instead of opening an invented link. These links do not create or modify any provider content.
+
+## Sync scope dashboard
+
+The dashboard at the top of Sync Agent counts files in the saved Shufflrr selection, including subfolders and excluding deselected subtrees. It shows source file count/original byte total, currently synchronized SharePoint file count/actual stored byte total, and unique failed/conflicting versus pending files. Unrelated SharePoint items, detached copies and folders are not counted. Repeated notices for the same file do not inflate totals.
+
+Totals are saved in the existing run-summary JSON after complete source and destination scans, then updated with the run's activity flushes. Dashboard polling reads PostgreSQL only; it never triggers a new provider crawl. The last full-scope scan time is displayed; targeted retries do not replace full-scope totals. After an upgrade or scope change, the dashboard waits for a full scan rather than showing invented zeros or another scope's totals. Unknown source sizes are explicitly identified as partial totals. Size displays use decimal **MB = 1,000,000 bytes**, with a note explaining SharePoint's Office metadata overhead. Deploy the updated API and worker; no SQL migration is required for these additional JSON summary fields.
+
 ## Large files and failure banners
+
+Graph upload sessions can acknowledge remaining bytes using either open-ended or bounded ranges. Both forms are validated numerically without skipping bytes; malformed acknowledgements, truncated sources and incomplete commits still fail safely.
+
+SharePoint may add document-property metadata to Open XML Office packages and change their stored size. For those Office formats only, a complete upload with a changed size is accepted after a separate Graph read confirms the committed item's ID, name, parent folder, stored size and available content version. PDFs and other formats still require an exact final size. This verifies the completed Office upload, not byte-identical content.
+
+Original Shufflrr size remains in the successful sync mapping; SharePoint's actual size remains in its durable destination snapshot. Copied/updated file activity entries show **Source bytes transferred** and **SharePoint stored bytes**, with an explicit notice when Office processing changes the size. SharePoint has no standard Graph field for "size without metadata"; do not calculate an artificial size by subtracting a previous difference. Change detection compares current source metadata against its saved source baseline, and SharePoint's current content tag against its saved destination content tag. A stable metadata-size difference alone does not cause endless uploads; a subsequent destination edit still triggers restoration from Shufflrr.
 
 Sync folder configuration is opened with the gear icon on Sync Agent. The right-side panel stacks SharePoint above Shufflrr with independently scrollable trees and Save settings at the top. Outside click, Escape, or the top-left chevron closes it without saving or discarding the current selections.
 

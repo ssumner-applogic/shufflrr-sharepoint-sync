@@ -3,6 +3,7 @@ import { ProviderGate, requestSpacing } from "@workspace/shufflrr/http-policy";
 import type { AccessReport, FolderListing } from "@workspace/api-zod";
 import { MAX_SYNC_FILE_BYTES, FileTransferError, uploadChunks, type SyncFileStream } from "./sync-transfer";
 import { fileSizeDescription, uploadRejection } from "./sync-upload-diagnostics";
+import { confirmOfficeUpload, uploadSizeNote } from "./sync-office-upload";
 
 export const libraryUrl = "https://sandvine.sharepoint.com/sites/ApplogicKnowledgeBase/Shared%20Documents";
 const graphRoot = "https://graph.microsoft.com/v1.0";
@@ -308,6 +309,8 @@ export interface SyncDriveItem {
   modifiedAt: string;
   cTag?: string;
   parentId?: string;
+  /** Transfer-specific activity detail; never used as a size/change-detection baseline. */
+  uploadNote?: string;
 }
 
 function syncDriveItem(item: GraphItem): SyncDriveItem {
@@ -329,6 +332,42 @@ export async function getSyncDriveItem(itemId: string): Promise<SyncDriveItem> {
     return syncDriveItem(await getDriveItem(driveId, rootId));
   }
   return syncDriveItem(await getDriveItem(driveId, itemId));
+}
+
+/** Resolve browser links only on demand, never from upload-session capability URLs. */
+export async function getSyncTargetUrl(rootId: string, relativePath: string, target: "file" | "folder", mappedId?: string): Promise<string> {
+  const { driveId } = await location();
+  const parts = relativePath.split("/");
+  if (parts.some(part => !part || part === "." || part === ".." || /[\\\u0000-\u001f]/.test(part)))
+    throw new AccessError("InvalidDestinationPath", "The destination path could not be verified.", 400);
+  let item: GraphItem | undefined;
+  if (mappedId) {
+    try { item = await getDriveItem(driveId, mappedId); }
+    catch (error) { if (!(error instanceof AccessError) || error.status !== 404) throw error; }
+  }
+  if (!item) {
+    const resolvedRootId = rootId === "root" ? await getRootId(driveId) : rootId;
+    const path = (target === "file" ? parts : parts.slice(0, -1)).map(encodeURIComponent).join("/");
+    try {
+      item = path
+        ? await graph<GraphItem>(`/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(resolvedRootId)}:/${path}?$select=id,name,folder,webUrl`)
+        : await getDriveItem(driveId, resolvedRootId);
+    } catch (error) {
+      if (!(error instanceof AccessError) || error.status !== 404) throw error;
+      throw new AccessError("SyncTargetMissing",
+        target === "file"
+          ? "The target file does not exist in SharePoint yet. Its upload may not have completed."
+          : "The target folder does not exist in SharePoint yet. Its creation may not have completed.", 404);
+    }
+  }
+  if (!!item.folder !== (target === "folder"))
+    throw new AccessError("SyncTargetType", "The SharePoint target has a different item type than expected.", 409);
+  if (!item.webUrl)
+    throw new AccessError("SyncTargetLink", "SharePoint did not provide a browser link for this item.");
+  const url = new URL(item.webUrl);
+  if (url.protocol !== "https:" || url.origin !== new URL(libraryUrl).origin)
+    throw new AccessError("SyncTargetLink", "SharePoint returned an unexpected browser link.");
+  return url.href;
 }
 
 export async function listSyncFolder(folderId: string): Promise<SyncDriveItem[]> {
@@ -452,6 +491,7 @@ export async function uploadSyncFile(
         ? { size, body: new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(bytes); controller.close(); } }) }
         : bytes;
       let committed = false;
+      let verifiedOfficeItem: SyncDriveItem | undefined;
       try {
         const result = await uploadChunks(source, async (chunk, start, total) =>
           graphGate.request(() => fetch(uploadUrl, {
@@ -459,9 +499,17 @@ export async function uploadSyncFile(
             headers: { "Content-Type": "application/octet-stream",
               "Content-Length": String(chunk.length), "Content-Range": `bytes ${start}-${start + chunk.length - 1}/${total}` },
             body: chunk,
-          }), "PUT"));
+          }), "PUT"),
+          async completed => {
+            verifiedOfficeItem = await confirmOfficeUpload(
+              { name, parentId: resolvedParentId, existingId }, completed, getSyncDriveItem);
+            return !!verifiedOfficeItem;
+          });
         committed = true;
-        return syncDriveItem({ ...result, parentReference: { id: resolvedParentId } });
+        return {
+          ...(verifiedOfficeItem ?? syncDriveItem({ ...result, parentReference: { id: resolvedParentId } })),
+          uploadNote: uploadSizeNote(size, result.size),
+        };
       } finally {
         // The capability URL is server-only. Cancellation is best effort and obeys the same provider gate.
         if (!committed) await graphGate.request(() => fetch(uploadUrl, {

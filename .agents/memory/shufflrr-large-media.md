@@ -14,3 +14,27 @@ Verify browser deep-link formats against the target portal's own public navigati
 **Why:** Its non-slide file-details links use a file-history identifier distinct from the file identifier used by slide-view links; REST API paths are not equivalent browser URLs.
 
 **How to apply:** Preserve available file-history metadata and check the portal's current native links if navigation changes. Never put service-account cookies, API credentials or signed upload URLs in browser links.
+
+Folder-only links must use Browse filtered by the parent-folder ID, not the Presentations section without an explicit file.
+
+**Why:** The user confirmed that a folder-only Presentations link stayed on the portal home screen. The portal's public bundle supports Browse column filters for `parentFolderId`.
+
+**How to apply:** Use the native Browse `search_parentFolderId` filter for folder-content links; keep file-detail links on their separate native routes.
+
+Microsoft Graph upload acknowledgements can contain bounded missing-byte ranges, not only open-ended ranges.
+
+**Why:** A live SharePoint upload returned a valid bounded range after its first chunk; treating that response as an error caused repeated failures on multi-chunk files.
+
+**How to apply:** Validate range offsets numerically against sequential progress and total size. Retain truncation, final-commit and integrity checks.
+
+SharePoint can rewrite Office document packages during upload by adding library-property metadata, changing size and hash even when slides and media are unchanged.
+
+**Why:** A live PowerPoint read-back preserved every original slide/media part but added custom XML and document properties, changing its size.
+
+**How to apply:** Distinguish provider metadata processing from incomplete transport. Do not claim an Office file has a matching checksum without checking.
+
+The user approved normal SharePoint Office metadata processing, while requiring the original source size to remain separately tracked.
+
+**Why:** They want meaningful size comparisons despite SharePoint's added metadata.
+
+**How to apply:** Retain original transferred/source bytes and actual stored bytes separately. Never invent a SharePoint "size without metadata" or subtract a guessed overhead. Confirm complete Office commits independently, and keep strict size checks for non-Office formats.

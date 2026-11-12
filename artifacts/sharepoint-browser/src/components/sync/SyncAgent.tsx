@@ -14,6 +14,7 @@ import {
   dismissSyncOrphan,
   getSyncConfig,
   getGetSyncConfigQueryKey,
+  getGetSyncDashboardQueryKey,
   getListShufflrrItemsQueryKey,
   listItems,
   listShufflrrItems,
@@ -29,6 +30,7 @@ import {
 } from "@workspace/api-client-react";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { SyncActivityLog } from "./SyncActivityLog";
+import { SyncDashboard } from "./SyncDashboard";
 import { SyncFailureBanners } from "./SyncFailureBanners";
 import { currentExclusionAncestors, folderSelectionState, toggleFolderSelection } from "./folder-selection";
 
@@ -365,6 +367,7 @@ export function SyncAgent({ active }: { active: boolean }) {
         queryClient.invalidateQueries({ queryKey: ["sync-sharepoint-folders"] }, { throwOnError: true }),
         queryClient.invalidateQueries({ queryKey: getListShufflrrItemsQueryKey() }, { throwOnError: true }),
         queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }, { throwOnError: true }),
+        queryClient.invalidateQueries({ queryKey: getGetSyncDashboardQueryKey() }, { throwOnError: true }),
       ]);
       if (results.some(result => result.status === "rejected")) {
         throw new Error("Some updates could not be loaded. Refresh again or check the folder errors below.");
@@ -518,6 +521,7 @@ export function SyncAgent({ active }: { active: boolean }) {
           {configError}
         </div>
       )}
+      {config && <SyncDashboard active={active} config={config} />}
       {config && <ConfigStatus config={config} />}
       {config && <SyncFailureBanners active={active} />}
       {config && <SyncActivityLog config={config} active={active} />}

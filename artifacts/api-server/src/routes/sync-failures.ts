@@ -4,11 +4,13 @@ import {
   syncConfigTable,
   syncFileFailureIssuesTable as issues,
   syncFileFailuresTable as failures,
+  syncItemsTable,
 } from "@workspace/db/schema";
-import { GetSyncFailuresQueryParams, DismissSyncFileFailureParams, RetrySyncFileParams, RetryAllSyncFilesResponse } from "@workspace/api-zod";
+import { GetSyncFailuresQueryParams, DismissSyncFileFailureParams, RetrySyncFileParams, RetryAllSyncFilesResponse,
+  GetSyncFailureSharePointLinkParams, GetSyncFailureSharePointLinkResponse } from "@workspace/api-zod";
 import { shufflrrFailureLinks } from "../lib/sync-file-failures";
 import { SYNC_LOCK_ID } from "../lib/sync-runner";
-import { AccessError } from "../lib/sharepoint";
+import { AccessError, getSyncTargetUrl } from "../lib/sharepoint";
 
 function inScope(row: typeof failures.$inferSelect, config: typeof syncConfigTable.$inferSelect | undefined) {
   return !!config && config.destinationFolderId === row.destinationRootId &&
@@ -34,6 +36,27 @@ export function syncFailureRoutes(
   database = async () => (await import("@workspace/db")).db,
 ) {
   const router = Router();
+  router.get("/:id/sharepoint/:target", async (req, res) => {
+    const parsed = GetSyncFailureSharePointLinkParams.safeParse(req.params);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Choose a valid file notice and SharePoint target.", requestId: String(req.id) });
+      return;
+    }
+    try {
+      const db = await database();
+      const [row] = await db.select().from(failures).where(eq(failures.id, parsed.data.id)).limit(1);
+      if (!row) throw new AccessError("FailureNotFound", "The file notice could not be found.", 404);
+      const folder = parsed.data.target === "folder";
+      const [mapping] = await db.select({ destinationId: syncItemsTable.destinationId }).from(syncItemsTable).where(and(
+        eq(syncItemsTable.destinationRootId, row.destinationRootId),
+        eq(syncItemsTable.sourceRootId, String(row.sourceRootId)),
+        eq(syncItemsTable.sourceId, String(folder ? row.parentId : row.sourceId)),
+        eq(syncItemsTable.sourceIsFolder, folder),
+      )).limit(1);
+      const url = await getSyncTargetUrl(row.destinationRootId, row.path, parsed.data.target, mapping?.destinationId);
+      res.json(GetSyncFailureSharePointLinkResponse.parse({ url }));
+    } catch (error) { fail(req, res, error); }
+  });
   router.get("/", async (req, res) => {
     const parsed = GetSyncFailuresQueryParams.safeParse(req.query);
     if (!parsed.success) { res.status(400).json({ error: "Invalid failure page.", requestId: String(req.id) }); return; }

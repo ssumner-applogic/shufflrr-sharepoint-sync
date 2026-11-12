@@ -33,6 +33,21 @@ export interface SyncRunSummary {
   updatedFiles: number;
   deletedItems: number;
   conflicts: number;
+  /** Aggregate of a complete in-scope source/destination scan; no provider credentials. */
+  inventory?: SyncInventorySnapshot;
+}
+
+export interface SyncInventorySnapshot {
+  scopeKey: string;
+  scannedAt: string;
+  sourceFiles: number;
+  sourceBytes: number;
+  sourceUnknownSizeFiles: number;
+  synchronizedFiles: number;
+  synchronizedBytes: number;
+  failedFiles: number;
+  pendingFiles: number;
+  notSynchronizedFiles: number;
 }
 
 export const syncConfigTable = pgTable("sync_config", {

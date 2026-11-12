@@ -53,6 +53,19 @@ paths:
         "401": { $ref: "#/components/responses/ShufflrrError" }
         "404": { $ref: "#/components/responses/ShufflrrError" }
         "503": { $ref: "#/components/responses/ShufflrrError" }
+  /sync/dashboard:
+    get:
+      operationId: getSyncDashboard
+      summary: Read scoped file totals from the latest full sync inventory
+      responses:
+        "200":
+          description: Last complete scan of the currently configured sync scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncDashboard"
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
   /sync/config:
     get:
       operationId: getSyncConfig
@@ -125,6 +138,29 @@ paths:
                   retryAt: { type: string, format: date-time }
         "409":
           description: A sync is currently running
+  /sync/failures/{id}/sharepoint/{target}:
+    get:
+      operationId: getSyncFailureSharePointLink
+      summary: Resolve the existing SharePoint target file or parent folder browser link
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: target, in: path, required: true, schema: { type: string, enum: [file, folder] } }
+      responses:
+        "200":
+          description: Verified destination browser link
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url: { type: string, format: uri }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "404": { $ref: "#/components/responses/ShufflrrError" }
+        "409": { $ref: "#/components/responses/ShufflrrError" }
+        "502": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
   /sync/failures/{id}/dismiss:
     put:
       operationId: dismissSyncFileFailure
@@ -541,6 +577,29 @@ components:
         sourceRootName: { type: string }
         destinationFolderName: { type: string }
         createdAt: { type: string, format: date-time }
+    SyncDashboard:
+      type: object
+      required: [configured, running, inventory]
+      properties:
+        configured: { type: boolean }
+        running: { type: boolean }
+        inventory:
+          oneOf:
+            - $ref: "#/components/schemas/SyncInventoryTotals"
+            - { type: "null" }
+    SyncInventoryTotals:
+      type: object
+      required: [scannedAt, sourceFiles, sourceBytes, sourceUnknownSizeFiles, synchronizedFiles, synchronizedBytes, failedFiles, pendingFiles, notSynchronizedFiles]
+      properties:
+        scannedAt: { type: string, format: date-time }
+        sourceFiles: { type: integer, minimum: 0 }
+        sourceBytes: { type: integer, minimum: 0 }
+        sourceUnknownSizeFiles: { type: integer, minimum: 0 }
+        synchronizedFiles: { type: integer, minimum: 0 }
+        synchronizedBytes: { type: integer, minimum: 0 }
+        failedFiles: { type: integer, minimum: 0 }
+        pendingFiles: { type: integer, minimum: 0 }
+        notSynchronizedFiles: { type: integer, minimum: 0 }
     SyncConfig:
       type: object
       required: [configured, destinationFolderId, destinationFolderName, sourceFolders, excludedFolders, enabled, pollIntervalSeconds, nextRunAt, providerCooldownUntil, lastRunAt, lastRunStatus, lastRunSummary, lastRunConflicts, lastRunError, detachedPairs]

@@ -4,6 +4,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import {
   DismissSyncOrphanParams,
   GetSyncConfigResponse,
+  GetSyncDashboardResponse,
   SaveSyncConfigBody,
   SetSyncEnabledBody,
   SetSyncIntervalBody,
@@ -29,6 +30,7 @@ import { ProviderBackoffError } from "@workspace/shufflrr/http-policy";
 import { exclusionNoticeKey, validateFolderExclusions } from "../lib/sync-exclusions";
 import { syncFailureRoutes } from "./sync-failures";
 import { requestSyncNow, setSyncEnabledState } from "../lib/sync-control";
+import { syncInventoryScopeKey } from "../lib/sync-inventory";
 
 const router: IRouter = Router();
 
@@ -143,6 +145,25 @@ router.get("/sync/config", async (req, res): Promise<void> => {
   } catch (error) {
     operationError(req, res, error);
   }
+});
+
+router.get("/sync/dashboard", async (req, res): Promise<void> => {
+  try {
+    const { db } = await import("@workspace/db");
+    const [config] = await db.select().from(syncConfigTable).where(eq(syncConfigTable.id, 1)).limit(1);
+    const configured = !!config?.destinationFolderId && !!config.sourceFolders.length;
+    let inventory = null;
+    if (configured && config.destinationFolderId) {
+      const scopeKey = syncInventoryScopeKey({ ...config, destinationFolderId: config.destinationFolderId });
+      const [run] = await db.select({ summary: syncRunsTable.summary }).from(syncRunsTable)
+        .where(sql`${syncRunsTable.summary}->'inventory'->>'scopeKey' = ${scopeKey}`)
+        .orderBy(desc(syncRunsTable.startedAt)).limit(1);
+      inventory = run?.summary?.inventory ?? null;
+    }
+    res.json(GetSyncDashboardResponse.parse({
+      configured, running: config?.lastRunStatus === "running", inventory,
+    }));
+  } catch (error) { operationError(req, res, error); }
 });
 
 router.get("/sync/runs", async (req, res): Promise<void> => {

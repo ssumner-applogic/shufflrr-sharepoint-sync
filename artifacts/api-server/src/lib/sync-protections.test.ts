@@ -20,6 +20,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { syncFailureRoutes } from "../routes/sync-failures";
 import { setSyncEnabledState, syncPauseCheckpoint, SyncPauseRequested } from "./sync-control";
+import { uploadSizeNote } from "./sync-office-upload";
 
 function clock() {
   let time = Date.UTC(2026, 0, 1);
@@ -356,6 +357,9 @@ test("initial sync resolves newly created parents in the same run", async () => 
   const result = await performSync(fixture.database, sourceClient(true), engineConfig, () => {}, fixture.providers);
   assert.deepEqual(fixture.calls, ["folder:root:Source", "folder:new-1:Nested", "upload:new-2:deck.pptx:new"]);
   assert.equal(result.summary.copiedFiles, 1);
+  assert.equal(result.summary.inventory?.sourceFiles, 1);
+  assert.equal(result.summary.inventory?.synchronizedFiles, 1);
+  assert.equal(result.summary.inventory?.notSynchronizedFiles, 0);
   assert.equal(fixture.rows().length, 3);
 });
 
@@ -855,6 +859,39 @@ test("mapped files report updated and later unchanged outcomes accurately", asyn
   const log = collectLog();
   await performSync(fixture.database, sourceClient(), engineConfig, () => {}, fixture.providers, log);
   assert.deepEqual(log.events.map(row => row.status), ["unchanged", "updated"]);
+});
+
+test("Office processing retains original source size and does not cause repeated uploads", async () => {
+  const records = [
+    { ...item("dest-folder", "Source", "root", true), path: "Source" },
+    { ...item("dest-file", "deck.pptx", "dest-folder"), cTag: "old-tag", path: "Source/deck.pptx" },
+  ];
+  const fixture = engineFixture(
+    [mapping(1, "1", "dest-folder", true), mapping(2, "3", "dest-file", false)], records);
+  let uploads = 0;
+  fixture.providers.uploadSyncFile = async () => {
+    uploads++;
+    return {
+      ...item("dest-file", "deck.pptx", "dest-folder"), size: 9, cTag: "office-tag",
+      uploadNote: uploadSizeNote(3, 9),
+    };
+  };
+  const firstLog = collectLog();
+  await performSync(fixture.database, sourceClient(), engineConfig, () => {}, fixture.providers, firstLog);
+  assert.equal(fixture.rows().find(row => row.sourceId === "3")?.sourceSize, 3);
+  assert.match(firstLog.events.find(event => event.status === "updated")?.message ?? "",
+    /Source bytes transferred: 3.*SharePoint stored bytes: 9/);
+
+  records[1] = { ...records[1], size: 9, cTag: "office-tag" };
+  const secondLog = collectLog();
+  await performSync(fixture.database, sourceClient(), engineConfig, () => {}, fixture.providers, secondLog);
+  assert.equal(uploads, 1);
+  assert.equal(secondLog.events.find(event => event.path === "Source/deck.pptx")?.status, "unchanged");
+
+  // A real destination edit must still be restored, independently of the size difference.
+  records[1] = { ...records[1], cTag: "manually-edited" };
+  await performSync(fixture.database, sourceClient(), engineConfig, () => {}, fixture.providers);
+  assert.equal(uploads, 2);
 });
 
 test("source deletion logs the managed file deleted from SharePoint", async () => {

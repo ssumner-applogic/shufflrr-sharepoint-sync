@@ -11,6 +11,7 @@ import {
   type SyncFileFailure,
 } from "@workspace/api-client-react";
 import { groupSyncFailures } from "./failureGrouping";
+import { SharePointFailureLinks } from "./SharePointFailureLinks";
 
 function FailureItem({ file, compact, retry, dismiss, retryPending, dismissPending, queued }: {
   file: SyncFileFailure;
@@ -40,6 +41,7 @@ function FailureItem({ file, compact, retry, dismiss, retryPending, dismissPendi
           className="inline-flex items-center gap-1 underline">
           <FolderOpen className="size-3" aria-hidden="true" />Open parent folder in Shufflrr
         </a>
+        <SharePointFailureLinks failureId={file.id} />
         <button type="button" data-testid={`button-retry-sync-file-${file.id}`}
           disabled={!file.canRetry || retryPending}
           title={file.retryRequestedAt ? "Retry queued; provider cooldowns are respected."

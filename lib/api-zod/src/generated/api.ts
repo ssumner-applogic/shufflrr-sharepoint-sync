@@ -80,6 +80,44 @@ export const GetSyncRunEventsResponse = zod.object({
 
 
 /**
+ * @summary Read scoped file totals from the latest full sync inventory
+ */
+export const getSyncDashboardResponseInventoryOneSourceFilesMin = 0;
+
+export const getSyncDashboardResponseInventoryOneSourceBytesMin = 0;
+
+export const getSyncDashboardResponseInventoryOneSourceUnknownSizeFilesMin = 0;
+
+export const getSyncDashboardResponseInventoryOneSynchronizedFilesMin = 0;
+
+export const getSyncDashboardResponseInventoryOneSynchronizedBytesMin = 0;
+
+export const getSyncDashboardResponseInventoryOneFailedFilesMin = 0;
+
+export const getSyncDashboardResponseInventoryOnePendingFilesMin = 0;
+
+export const getSyncDashboardResponseInventoryOneNotSynchronizedFilesMin = 0;
+
+
+
+export const GetSyncDashboardResponse = zod.object({
+  "configured": zod.boolean(),
+  "running": zod.boolean(),
+  "inventory": zod.union([zod.object({
+  "scannedAt": zod.coerce.date(),
+  "sourceFiles": zod.number().int().min(getSyncDashboardResponseInventoryOneSourceFilesMin),
+  "sourceBytes": zod.number().int().min(getSyncDashboardResponseInventoryOneSourceBytesMin),
+  "sourceUnknownSizeFiles": zod.number().int().min(getSyncDashboardResponseInventoryOneSourceUnknownSizeFilesMin),
+  "synchronizedFiles": zod.number().int().min(getSyncDashboardResponseInventoryOneSynchronizedFilesMin),
+  "synchronizedBytes": zod.number().int().min(getSyncDashboardResponseInventoryOneSynchronizedBytesMin),
+  "failedFiles": zod.number().int().min(getSyncDashboardResponseInventoryOneFailedFilesMin),
+  "pendingFiles": zod.number().int().min(getSyncDashboardResponseInventoryOnePendingFilesMin),
+  "notSynchronizedFiles": zod.number().int().min(getSyncDashboardResponseInventoryOneNotSynchronizedFilesMin)
+}),zod.null()])
+})
+
+
+/**
  * @summary Read the shared Shufflrr to SharePoint sync configuration
  */
 
@@ -297,6 +335,22 @@ export const RetryAllSyncFilesResponse = zod.object({
   "queuedCount": zod.number().int(),
   "clearedCount": zod.number().int(),
   "retryAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Resolve the existing SharePoint target file or parent folder browser link
+ */
+
+
+
+export const GetSyncFailureSharePointLinkParams = zod.object({
+  "id": zod.coerce.number().int().min(1),
+  "target": zod.enum(['file', 'folder'])
+})
+
+export const GetSyncFailureSharePointLinkResponse = zod.object({
+  "url": zod.string().url()
 })
 
 

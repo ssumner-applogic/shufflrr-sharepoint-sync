@@ -49,7 +49,7 @@ export class SyncFileFailureStore {
 /** These hash routes are emitted by the portal's own public navigation bundle. No API credentials in links. */
 export function shufflrrFailureLinks(origin: string, parentId: number, fileId: number, historyId?: number | null) {
   const folderUrl = new URL("/Shufflrr", origin);
-  folderUrl.hash = `!/?section=presentations&folder=${parentId}&mode=files`;
+  folderUrl.hash = `!/?section=browse&search_parentFolderId=${parentId}`;
   const fileUrl = new URL(folderUrl);
   fileUrl.hash = historyId
     ? `!/?section=presentations&folder=${parentId}&mode=files&tab=details&historyFile=${historyId}`

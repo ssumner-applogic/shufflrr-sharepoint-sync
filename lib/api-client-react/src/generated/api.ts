@@ -29,6 +29,7 @@ import type {
   ConnectionStatus,
   DismissAllSyncFailures200,
   FolderListing,
+  GetSyncFailureSharePointLink200,
   GetSyncFailures200,
   GetSyncFailuresParams,
   GetSyncRunEventsParams,
@@ -46,6 +47,7 @@ import type {
   ShufflrrProbeInput,
   SyncConfig,
   SyncConfigInput,
+  SyncDashboard,
   SyncEnabledInput,
   SyncEventPage,
   SyncPollingInput,
@@ -276,6 +278,107 @@ export function useGetSyncRunEvents<TData = Awaited<ReturnType<typeof getSyncRun
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetSyncRunEventsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetSyncDashboardUrl = () => {
+
+
+
+
+  return `/api/sync/dashboard`
+}
+
+/**
+ * @summary Read scoped file totals from the latest full sync inventory
+ */
+export const getSyncDashboard = async ( options?: Parameters<typeof customFetch>[1]): Promise<SyncDashboard> => {
+
+  return customFetch<SyncDashboard>(getGetSyncDashboardUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSyncDashboardQueryKey = () => {
+    return [
+    `/api/sync/dashboard`
+    ] as const;
+    }
+
+
+export const getGetSyncDashboardQueryOptions = <TData = Awaited<ReturnType<typeof getSyncDashboard>>, TError = ErrorType<ShufflrrErrorResponse>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncDashboard>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSyncDashboardQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSyncDashboard>>> = ({ signal }) => getSyncDashboard({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSyncDashboard>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetSyncDashboardQueryResult = NonNullable<Awaited<ReturnType<typeof getSyncDashboard>>>
+export type GetSyncDashboardQueryError = ErrorType<ShufflrrErrorResponse>
+
+
+export function useGetSyncDashboard<TData = Awaited<ReturnType<typeof getSyncDashboard>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncDashboard>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncDashboard>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncDashboard>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncDashboard<TData = Awaited<ReturnType<typeof getSyncDashboard>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncDashboard>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncDashboard>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncDashboard>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncDashboard<TData = Awaited<ReturnType<typeof getSyncDashboard>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncDashboard>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Read scoped file totals from the latest full sync inventory
+ */
+
+export function useGetSyncDashboard<TData = Awaited<ReturnType<typeof getSyncDashboard>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncDashboard>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetSyncDashboardQueryOptions(options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -652,6 +755,115 @@ export const useRetryAllSyncFiles = <TError = ErrorType<void>,
       > => {
       return useMutation(getRetryAllSyncFilesMutationOptions(options), queryClient);
     }
+
+export const getGetSyncFailureSharePointLinkUrl = (id: number,
+    target: 'file' | 'folder',) => {
+
+
+
+
+  return `/api/sync/failures/${id}/sharepoint/${target}`
+}
+
+/**
+ * @summary Resolve the existing SharePoint target file or parent folder browser link
+ */
+export const getSyncFailureSharePointLink = async (id: number,
+    target: 'file' | 'folder', options?: Parameters<typeof customFetch>[1]): Promise<GetSyncFailureSharePointLink200> => {
+
+  return customFetch<GetSyncFailureSharePointLink200>(getGetSyncFailureSharePointLinkUrl(id,target),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSyncFailureSharePointLinkQueryKey = (id: number,
+    target: 'file' | 'folder',) => {
+    return [
+    `/api/sync/failures/${id}/sharepoint/${target}`
+    ] as const;
+    }
+
+
+export const getGetSyncFailureSharePointLinkQueryOptions = <TData = Awaited<ReturnType<typeof getSyncFailureSharePointLink>>, TError = ErrorType<ShufflrrErrorResponse>>(id: number,
+    target: 'file' | 'folder', options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncFailureSharePointLink>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSyncFailureSharePointLinkQueryKey(id,target);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSyncFailureSharePointLink>>> = ({ signal }) => getSyncFailureSharePointLink(id,target, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined && target !== null && target !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSyncFailureSharePointLink>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetSyncFailureSharePointLinkQueryResult = NonNullable<Awaited<ReturnType<typeof getSyncFailureSharePointLink>>>
+export type GetSyncFailureSharePointLinkQueryError = ErrorType<ShufflrrErrorResponse>
+
+
+export function useGetSyncFailureSharePointLink<TData = Awaited<ReturnType<typeof getSyncFailureSharePointLink>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ id: number,
+    target: 'file' | 'folder', options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncFailureSharePointLink>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncFailureSharePointLink>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncFailureSharePointLink>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncFailureSharePointLink<TData = Awaited<ReturnType<typeof getSyncFailureSharePointLink>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ id: number,
+    target: 'file' | 'folder', options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncFailureSharePointLink>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncFailureSharePointLink>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncFailureSharePointLink>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncFailureSharePointLink<TData = Awaited<ReturnType<typeof getSyncFailureSharePointLink>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ id: number,
+    target: 'file' | 'folder', options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncFailureSharePointLink>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Resolve the existing SharePoint target file or parent folder browser link
+ */
+
+export function useGetSyncFailureSharePointLink<TData = Awaited<ReturnType<typeof getSyncFailureSharePointLink>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ id: number,
+    target: 'file' | 'folder', options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncFailureSharePointLink>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetSyncFailureSharePointLinkQueryOptions(id,target,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getDismissSyncFileFailureUrl = (id: number,) => {
 

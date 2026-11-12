@@ -9,6 +9,7 @@ import {
 export interface SyncReporter {
   record(event: SyncLogEventInput): Promise<void>;
   progress(summary: SyncRunSummary, conflicts: SyncConflict[]): void;
+  flush?(): Promise<void>;
 }
 
 /** Shared by the HTTP server and private worker; file paths stay in protected storage, not stdout. */
@@ -84,10 +85,16 @@ export class SyncRunJournal implements SyncReporter {
   }
 
   async flush() {
-    if (!this.pending.length) return;
-    const batch = this.pending;
-    await this.db.insert(syncRunEventsTable).values(batch);
-    this.pending = [];
+    if (!this.pending.length && !this.summary?.inventory) return;
+    if (this.pending.length) {
+      const batch = this.pending;
+      await this.db.insert(syncRunEventsTable).values(batch);
+      this.pending = [];
+    }
+    if (this.summary?.inventory) {
+      await this.db.update(syncRunsTable).set({ summary: this.summary })
+        .where(eq(syncRunsTable.id, this.runId));
+    }
     this.lastFlush = Date.now();
   }
 

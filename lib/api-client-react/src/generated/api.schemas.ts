@@ -182,6 +182,32 @@ export interface SyncDetachedPair {
   createdAt: string;
 }
 
+export interface SyncInventoryTotals {
+  scannedAt: string;
+  /** @minimum 0 */
+  sourceFiles: number;
+  /** @minimum 0 */
+  sourceBytes: number;
+  /** @minimum 0 */
+  sourceUnknownSizeFiles: number;
+  /** @minimum 0 */
+  synchronizedFiles: number;
+  /** @minimum 0 */
+  synchronizedBytes: number;
+  /** @minimum 0 */
+  failedFiles: number;
+  /** @minimum 0 */
+  pendingFiles: number;
+  /** @minimum 0 */
+  notSynchronizedFiles: number;
+}
+
+export interface SyncDashboard {
+  configured: boolean;
+  running: boolean;
+  inventory: SyncInventoryTotals | null;
+}
+
 export type SyncConfigPollIntervalSeconds = typeof SyncConfigPollIntervalSeconds[keyof typeof SyncConfigPollIntervalSeconds];
 
 
@@ -436,6 +462,10 @@ export type RetryAllSyncFiles202 = {
   queuedCount: number;
   clearedCount: number;
   retryAt: string;
+};
+
+export type GetSyncFailureSharePointLink200 = {
+  url: string;
 };
 
 export type DismissAllSyncFailures200 = {

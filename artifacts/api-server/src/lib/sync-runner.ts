@@ -8,6 +8,7 @@ import { excludedMappingIds } from "./sync-exclusions";
 import { FileTransferError, sourceFileStream } from "./sync-transfer";
 import { SyncFileFailureStore } from "./sync-file-failures";
 import { canContinueAfterFileError } from "./sync-error-policy";
+import { SyncInventory } from "./sync-inventory";
 import { SyncPauseRequested, syncPauseCheckpoint } from "./sync-control";
 import {
   syncConfigTable,
@@ -344,12 +345,21 @@ export async function performSync(
     deletedItems: 0,
     conflicts: 0,
   };
+  // Targeted retries scan only part of the configured scope and cannot replace full-scope totals.
+  const inventory = retryKeys ? undefined : new SyncInventory(config, allSourceRecords, existingMappings, initialDestinations);
+  if (inventory) summary.inventory = inventory.totals;
   reporter.progress(summary, conflicts);
+  if (inventory) await reporter.flush?.();
   const sourceByPath = new Map(sourceRecords.map(record => [record.path, record]));
   const sourceFoldersById = new Map(allSourceRecords.filter(record => record.entry.isFolder)
     .map(record => [`${record.root.id}:${record.entry.id}`, record]));
   const recordEvent = (path: string, isFolder: boolean, status: SyncEventStatus, message: string) => {
     const record = isFolder ? undefined : sourceByPath.get(path);
+    if (record && inventory) {
+      const mapping = mappingBySource.get(sourceKey(String(record.root.id), String(record.entry.id), false));
+      inventory.record(record.root.id, record.entry.id, status,
+        mapping ? destinationById.get(mapping.destinationId) : undefined);
+    }
     const ancestorIds: number[] = [];
     let parent = record ? record.parentSourceId : null;
     while (parent && ancestorIds.length <= 100) {
@@ -615,6 +625,8 @@ export async function performSync(
     }
 
     if (!destinationItem) throw new Error("A SharePoint item could not be created or resolved.");
+    const transferNote = itemStatus === "copied" || itemStatus === "updated"
+      ? destinationItem.uploadNote : undefined;
     // Reflect successful local writes immediately, even if Graph's delta feed has not caught up yet.
     if (destinationItem !== originalDestination) {
       await db.insert(syncSharepointItemsTable).values({
@@ -635,7 +647,7 @@ export async function performSync(
       mapping.name === record.entry.name && mapping.sourceModifiedAt === (record.entry.modifiedAt ?? null) &&
       mapping.sourceSize === (record.entry.size ?? 0) && mapping.destinationCTag === (destinationItem.cTag ?? null)) {
       await recordEvent(record.path, record.entry.isFolder, itemStatus, itemStatus === "unchanged"
-        ? "Already in sync; no changes needed." : "SharePoint now matches the source.");
+        ? "Already in sync; no changes needed." : transferNote ?? "SharePoint now matches the source.");
       continue;
     }
     const [savedMapping] = await db.insert(syncItemsTable).values({
@@ -673,7 +685,7 @@ export async function performSync(
       },
     }).returning();
     mappingBySource.set(key, savedMapping);
-    await recordEvent(record.path, record.entry.isFolder, itemStatus, {
+    await recordEvent(record.path, record.entry.isFolder, itemStatus, transferNote ?? {
       created: "Folder created in SharePoint.",
       copied: "File copied to SharePoint.",
       updated: "SharePoint file updated from the source; its name and location were reconciled.",

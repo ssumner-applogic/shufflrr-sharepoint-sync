@@ -6,6 +6,7 @@ import { readUploadResponse, uploadRejection } from "./sync-upload-diagnostics";
 import { shufflrrFailureLinks } from "./sync-file-failures";
 import { SyncRunJournal } from "./sync-log";
 import type { SyncFileFailureStore } from "./sync-file-failures";
+import { confirmOfficeUpload, uploadSizeNote } from "./sync-office-upload";
 
 function byteStream(total: number) {
   let remaining = total;
@@ -73,6 +74,96 @@ test("an unexpected fragment acknowledgement or unverified final size is not suc
   await assert.rejects(uploadChunks({ body: byteStream(3), size: 3 },
     async () => Response.json({ id: "x", name: "x", size: 2 }, { status: 201 })), /size does not match/);
 });
+test("Office property processing requires a complete commit and an independent matching item read", async () => {
+  const completed = { id: "office", name: "deck.pptx", size: 9, cTag: "confirmed" };
+  let reads = 0;
+  const result = await uploadChunks({ body: byteStream(3), size: 3 }, async () =>
+    Response.json(completed, { status: 201 }), async file =>
+    !!await confirmOfficeUpload({ name: "deck.pptx", parentId: "parent" }, file, async () => {
+      reads++;
+      return { ...completed, isFolder: false, parentId: "parent" };
+    }));
+  assert.equal(reads, 1);
+  assert.equal(result.size, 9);
+  const note = uploadSizeNote(3, result.size);
+  assert.match(note, /Source bytes transferred: 3.*SharePoint stored bytes: 9/);
+  assert.match(note, /not a byte-identical copy/);
+  assert.doesNotMatch(uploadSizeNote(3, 3), /processed|not a byte-identical/);
+});
+test("Office size changes cannot hide wrong identities, paths, types, sizes or versions", async () => {
+  const completed = { id: "office", name: "deck.pptx", size: 9, cTag: "confirmed" };
+  const stored = { ...completed, isFolder: false, parentId: "parent" };
+  for (const change of [
+    { id: "other" }, { name: "other.pptx" }, { isFolder: true }, { parentId: "other" },
+    { size: 8 }, { cTag: "other" }, { cTag: undefined },
+  ]) {
+    assert.equal(await confirmOfficeUpload(
+      { name: "deck.pptx", parentId: "parent" }, completed,
+      async () => ({ ...stored, ...change })), undefined);
+  }
+  let reads = 0;
+  const read = async () => { reads++; return stored; };
+  for (const expected of [
+    { name: "file.pdf", parentId: "parent" },
+    { name: "different.pptx", parentId: "parent" },
+    { name: "deck.pptx", parentId: "parent", existingId: "different-id" },
+  ]) assert.equal(await confirmOfficeUpload(expected, completed, read), undefined);
+  assert.equal(reads, 0);
+  await assert.rejects(uploadChunks({ body: byteStream(3), size: 3 }, async () =>
+    Response.json({ ...completed, name: "file.pdf" }, { status: 201 }),
+    async file => !!await confirmOfficeUpload({ name: "file.pdf", parentId: "parent" }, file, read)),
+  /size does not match/);
+});
+test("Office processing never overrides truncated streams, invalid details or incomplete sessions", async () => {
+  let verifications = 0;
+  const verify = async () => { verifications++; return true; };
+  await assert.rejects(uploadChunks({ body: byteStream(2), size: 3 }, async () =>
+    Response.json({ id: "x", name: "deck.pptx", size: 9 }, { status: 201 }), verify), /ended early/);
+  for (const body of [{ id: "", name: "deck.pptx", size: 9 }, { id: "x", name: "deck.pptx", size: -1 },
+    { id: "x", name: "deck.pptx", size: 9.5 }]) {
+    await assert.rejects(uploadChunks({ body: byteStream(3), size: 3 }, async () =>
+      Response.json(body, { status: 201 }), verify), /missing valid file details/);
+  }
+  await assert.rejects(uploadChunks({ body: byteStream(3), size: 3 }, async () =>
+    Response.json({ nextExpectedRanges: ["3-"] }, { status: 202 }), verify), /incomplete/);
+  assert.equal(verifications, 0);
+});
+test("accepts SharePoint's bounded missing range after every non-final fragment", async () => {
+  const size = UPLOAD_CHUNK_BYTES * 2 + 17;
+  let fragments = 0;
+  const uploaded = await uploadChunks({ body: byteStream(size), size }, async (chunk, start) => {
+    fragments++;
+    const next = start + chunk.length;
+    return next === size
+      ? Response.json({ id: "bounded-upload", name: "test.pdf", size }, { status: 201 })
+      : Response.json({ nextExpectedRanges: [`${next}-${size - 1}`] }, { status: 202 });
+  });
+  assert.equal(fragments, 3);
+  assert.equal(uploaded.size, size);
+});
+test("missing ranges are interpreted numerically even when returned out of order", async () => {
+  const size = UPLOAD_CHUNK_BYTES + 32;
+  await uploadChunks({ body: byteStream(size), size }, async (chunk, start) => {
+    const next = start + chunk.length;
+    return next === size
+      ? Response.json({ id: "ranges-upload", name: "test.pdf", size }, { status: 201 })
+      : Response.json({ nextExpectedRanges: [`${next + 16}-${size - 1}`, `${next}-${next + 15}`] }, { status: 202 });
+  });
+});
+test("malformed, missing, unsafe and mismatched ranges cannot advance a sequential upload", async () => {
+  const next = UPLOAD_CHUNK_BYTES;
+  const size = next + 32;
+  for (const ranges of [[], null, [next], ["invalid"], [`${next + 1}-`],
+    ["0-", `${next}-`], [`${next}-${next - 1}`], [`${next}-${size}`],
+    [`${size}-`], [`${next}-9007199254740992`], [`${next}-`, "invalid"]]) {
+    let sends = 0;
+    await assert.rejects(uploadChunks({ body: byteStream(size), size }, async () => {
+      sends++;
+      return Response.json({ nextExpectedRanges: ranges }, { status: 202 });
+    }), /expected next byte offset/);
+    assert.equal(sends, 1);
+  }
+});
 test("size-limit errors distinguish the app limit from a destination rejection", async () => {
   assert.throws(() => sourceFileStream(new Response("abc"), 350_000_000),
     /350 MB \(350,000,000 bytes\).*300 MB \(300,000,000 bytes\)/);
@@ -136,7 +227,7 @@ test("a rejected upload is attempted once, never ambiguously replayed", async ()
 test("Shufflrr links use portal-native routes, including generic file-history details for videos", () => {
   const links = shufflrrFailureLinks("https://example.shufflrr.com", 12, 34, 56);
   assert.match(links.fileUrl, /historyFile=56/);
-  assert.match(links.parentFolderUrl, /folder=12/);
+  assert.equal(new URL(links.parentFolderUrl).hash, "#!/?section=browse&search_parentFolderId=12");
   assert.equal(new URL(links.fileUrl).origin, "https://example.shufflrr.com");
   assert.match(shufflrrFailureLinks("https://example.shufflrr.com", 12, 34).fileUrl, /file=34/);
 });
