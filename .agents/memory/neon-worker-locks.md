@@ -8,3 +8,5 @@ Use transaction-scoped advisory locks in an open transaction for whole-run synch
 **Why:** An idle pooled PostgreSQL backend retained a session advisory lock after the saved run had completed, blocking both control operations and schema migration. A checked-out JavaScript pool client does not establish backend-session affinity through transaction pooling.
 
 **How to apply:** Pin the lock connection with a transaction until cleanup, release it by ending the transaction, and keep migration lock waits bounded. Set timeouts with transaction-local SQL rather than startup PGOPTIONS, which the pooled endpoint rejects. Never terminate a possible active worker session without operator approval.
+
+Transaction pooling can reuse the lock-holding backend for an unrelated diagnostic query. Its current query does not identify the original lock owner; an apparent active diagnostic statement is not evidence of an active sync.
