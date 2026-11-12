@@ -85,13 +85,13 @@ export class SyncRunJournal implements SyncReporter {
   }
 
   async flush() {
-    if (!this.pending.length && !this.summary?.inventory) return;
+    if (!this.pending.length && !this.summary?.inventory && !this.summary?.fileProgress) return;
     if (this.pending.length) {
       const batch = this.pending;
       await this.db.insert(syncRunEventsTable).values(batch);
       this.pending = [];
     }
-    if (this.summary?.inventory) {
+    if (this.summary?.inventory || this.summary?.fileProgress) {
       await this.db.update(syncRunsTable).set({ summary: this.summary })
         .where(eq(syncRunsTable.id, this.runId));
     }

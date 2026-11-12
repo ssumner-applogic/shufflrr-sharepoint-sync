@@ -569,6 +569,16 @@ components:
         updatedFiles: { type: integer, minimum: 0 }
         deletedItems: { type: integer, minimum: 0 }
         conflicts: { type: integer, minimum: 0 }
+        fileProgress:
+          oneOf:
+            - $ref: "#/components/schemas/SyncFileProgress"
+            - { type: "null" }
+    SyncFileProgress:
+      type: object
+      required: [totalFiles, processedFiles]
+      properties:
+        totalFiles: { type: integer, minimum: 0 }
+        processedFiles: { type: integer, minimum: 0 }
     SyncDetachedPair:
       type: object
       required: [id, sourceRootName, destinationFolderName, createdAt]

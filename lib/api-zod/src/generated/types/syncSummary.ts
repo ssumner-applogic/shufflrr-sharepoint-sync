@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { SyncFileProgress } from './syncFileProgress';
 
 export interface SyncSummary {
   /** @minimum 0 */
@@ -17,4 +18,5 @@ export interface SyncSummary {
   deletedItems: number;
   /** @minimum 0 */
   conflicts: number;
+  fileProgress?: SyncFileProgress | null;
 }

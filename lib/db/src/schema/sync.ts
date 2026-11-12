@@ -33,8 +33,14 @@ export interface SyncRunSummary {
   updatedFiles: number;
   deletedItems: number;
   conflicts: number;
+  fileProgress?: SyncRunFileProgress;
   /** Aggregate of a complete in-scope source/destination scan; no provider credentials. */
   inventory?: SyncInventorySnapshot;
+}
+
+export interface SyncRunFileProgress {
+  totalFiles: number;
+  processedFiles: number;
 }
 
 export interface SyncInventorySnapshot {

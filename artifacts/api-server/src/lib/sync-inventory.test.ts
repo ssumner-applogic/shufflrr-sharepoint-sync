@@ -113,4 +113,12 @@ test("a full inventory is saved before transfers and its progress can be saved b
   assert.equal(saved[1].summary.inventory?.synchronizedFiles, 1);
   assert.equal(saved[1].summary.inventory?.synchronizedBytes, 16);
   assert.equal(saved[1].summary.inventory?.sourceBytes, 10);
+
+  const retryJournal = new SyncRunJournal(database, "retry-run");
+  retryJournal.progress({
+    createdFolders: 0, copiedFiles: 0, updatedFiles: 0, deletedItems: 0, conflicts: 0,
+    fileProgress: { totalFiles: 2, processedFiles: 0 },
+  }, []);
+  await retryJournal.flush();
+  assert.deepEqual(saved[2].summary.fileProgress, { totalFiles: 2, processedFiles: 0 });
 });

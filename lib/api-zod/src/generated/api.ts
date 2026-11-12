@@ -21,6 +21,10 @@ export const getSyncRunsResponseSummaryOneDeletedItemsMin = 0;
 
 export const getSyncRunsResponseSummaryOneConflictsMin = 0;
 
+export const getSyncRunsResponseSummaryOneFileProgressOneTotalFilesMin = 0;
+
+export const getSyncRunsResponseSummaryOneFileProgressOneProcessedFilesMin = 0;
+
 
 
 export const GetSyncRunsResponseItem = zod.object({
@@ -33,7 +37,11 @@ export const GetSyncRunsResponseItem = zod.object({
   "copiedFiles": zod.number().int().min(getSyncRunsResponseSummaryOneCopiedFilesMin),
   "updatedFiles": zod.number().int().min(getSyncRunsResponseSummaryOneUpdatedFilesMin),
   "deletedItems": zod.number().int().min(getSyncRunsResponseSummaryOneDeletedItemsMin),
-  "conflicts": zod.number().int().min(getSyncRunsResponseSummaryOneConflictsMin)
+  "conflicts": zod.number().int().min(getSyncRunsResponseSummaryOneConflictsMin),
+  "fileProgress": zod.union([zod.object({
+  "totalFiles": zod.number().int().min(getSyncRunsResponseSummaryOneFileProgressOneTotalFilesMin),
+  "processedFiles": zod.number().int().min(getSyncRunsResponseSummaryOneFileProgressOneProcessedFilesMin)
+}),zod.null()]).optional()
 }),zod.null()]),
   "error": zod.string().nullable()
 })
@@ -140,6 +148,10 @@ export const getSyncConfigResponseLastRunSummaryOneDeletedItemsMin = 0;
 
 export const getSyncConfigResponseLastRunSummaryOneConflictsMin = 0;
 
+export const getSyncConfigResponseLastRunSummaryOneFileProgressOneTotalFilesMin = 0;
+
+export const getSyncConfigResponseLastRunSummaryOneFileProgressOneProcessedFilesMin = 0;
+
 
 
 export const GetSyncConfigResponse = zod.object({
@@ -167,7 +179,11 @@ export const GetSyncConfigResponse = zod.object({
   "copiedFiles": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneCopiedFilesMin),
   "updatedFiles": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneUpdatedFilesMin),
   "deletedItems": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneDeletedItemsMin),
-  "conflicts": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneConflictsMin)
+  "conflicts": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneConflictsMin),
+  "fileProgress": zod.union([zod.object({
+  "totalFiles": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneFileProgressOneTotalFilesMin),
+  "processedFiles": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneFileProgressOneProcessedFilesMin)
+}),zod.null()]).optional()
 }),zod.null()]),
   "lastRunConflicts": zod.array(zod.object({
   "path": zod.string(),
@@ -243,6 +259,10 @@ export const saveSyncConfigResponseLastRunSummaryOneDeletedItemsMin = 0;
 
 export const saveSyncConfigResponseLastRunSummaryOneConflictsMin = 0;
 
+export const saveSyncConfigResponseLastRunSummaryOneFileProgressOneTotalFilesMin = 0;
+
+export const saveSyncConfigResponseLastRunSummaryOneFileProgressOneProcessedFilesMin = 0;
+
 
 
 export const SaveSyncConfigResponse = zod.object({
@@ -270,7 +290,11 @@ export const SaveSyncConfigResponse = zod.object({
   "copiedFiles": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneCopiedFilesMin),
   "updatedFiles": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneUpdatedFilesMin),
   "deletedItems": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneDeletedItemsMin),
-  "conflicts": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneConflictsMin)
+  "conflicts": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneConflictsMin),
+  "fileProgress": zod.union([zod.object({
+  "totalFiles": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneFileProgressOneTotalFilesMin),
+  "processedFiles": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneFileProgressOneProcessedFilesMin)
+}),zod.null()]).optional()
 }),zod.null()]),
   "lastRunConflicts": zod.array(zod.object({
   "path": zod.string(),
@@ -411,6 +435,10 @@ export const setSyncIntervalResponseLastRunSummaryOneDeletedItemsMin = 0;
 
 export const setSyncIntervalResponseLastRunSummaryOneConflictsMin = 0;
 
+export const setSyncIntervalResponseLastRunSummaryOneFileProgressOneTotalFilesMin = 0;
+
+export const setSyncIntervalResponseLastRunSummaryOneFileProgressOneProcessedFilesMin = 0;
+
 
 
 export const SetSyncIntervalResponse = zod.object({
@@ -438,7 +466,11 @@ export const SetSyncIntervalResponse = zod.object({
   "copiedFiles": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneCopiedFilesMin),
   "updatedFiles": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneUpdatedFilesMin),
   "deletedItems": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneDeletedItemsMin),
-  "conflicts": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneConflictsMin)
+  "conflicts": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneConflictsMin),
+  "fileProgress": zod.union([zod.object({
+  "totalFiles": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneFileProgressOneTotalFilesMin),
+  "processedFiles": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneFileProgressOneProcessedFilesMin)
+}),zod.null()]).optional()
 }),zod.null()]),
   "lastRunConflicts": zod.array(zod.object({
   "path": zod.string(),
@@ -481,6 +513,10 @@ export const setSyncEnabledResponseLastRunSummaryOneDeletedItemsMin = 0;
 
 export const setSyncEnabledResponseLastRunSummaryOneConflictsMin = 0;
 
+export const setSyncEnabledResponseLastRunSummaryOneFileProgressOneTotalFilesMin = 0;
+
+export const setSyncEnabledResponseLastRunSummaryOneFileProgressOneProcessedFilesMin = 0;
+
 
 
 export const SetSyncEnabledResponse = zod.object({
@@ -508,7 +544,11 @@ export const SetSyncEnabledResponse = zod.object({
   "copiedFiles": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneCopiedFilesMin),
   "updatedFiles": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneUpdatedFilesMin),
   "deletedItems": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneDeletedItemsMin),
-  "conflicts": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneConflictsMin)
+  "conflicts": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneConflictsMin),
+  "fileProgress": zod.union([zod.object({
+  "totalFiles": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneFileProgressOneTotalFilesMin),
+  "processedFiles": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneFileProgressOneProcessedFilesMin)
+}),zod.null()]).optional()
 }),zod.null()]),
   "lastRunConflicts": zod.array(zod.object({
   "path": zod.string(),
@@ -547,6 +587,10 @@ export const requestSyncNowResponseLastRunSummaryOneDeletedItemsMin = 0;
 
 export const requestSyncNowResponseLastRunSummaryOneConflictsMin = 0;
 
+export const requestSyncNowResponseLastRunSummaryOneFileProgressOneTotalFilesMin = 0;
+
+export const requestSyncNowResponseLastRunSummaryOneFileProgressOneProcessedFilesMin = 0;
+
 
 
 export const RequestSyncNowResponse = zod.object({
@@ -574,7 +618,11 @@ export const RequestSyncNowResponse = zod.object({
   "copiedFiles": zod.number().int().min(requestSyncNowResponseLastRunSummaryOneCopiedFilesMin),
   "updatedFiles": zod.number().int().min(requestSyncNowResponseLastRunSummaryOneUpdatedFilesMin),
   "deletedItems": zod.number().int().min(requestSyncNowResponseLastRunSummaryOneDeletedItemsMin),
-  "conflicts": zod.number().int().min(requestSyncNowResponseLastRunSummaryOneConflictsMin)
+  "conflicts": zod.number().int().min(requestSyncNowResponseLastRunSummaryOneConflictsMin),
+  "fileProgress": zod.union([zod.object({
+  "totalFiles": zod.number().int().min(requestSyncNowResponseLastRunSummaryOneFileProgressOneTotalFilesMin),
+  "processedFiles": zod.number().int().min(requestSyncNowResponseLastRunSummaryOneFileProgressOneProcessedFilesMin)
+}),zod.null()]).optional()
 }),zod.null()]),
   "lastRunConflicts": zod.array(zod.object({
   "path": zod.string(),

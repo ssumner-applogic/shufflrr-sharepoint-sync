@@ -66,6 +66,35 @@ function EventRow({ entry }: { entry: SyncLogEntry }) {
   );
 }
 
+function RunningFileProgress({ run }: { run: SyncRun }) {
+  const progress = run.summary?.fileProgress;
+  const hasTotal = !!progress && Number.isSafeInteger(progress.totalFiles) && progress.totalFiles > 0;
+  const processed = progress?.processedFiles ?? 0;
+  const total = progress?.totalFiles ?? 0;
+  const percent = hasTotal ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+
+  return (
+      <div className="ml-auto flex min-w-0 items-center gap-2 sm:w-48" data-testid="sync-run-file-progress">
+      <div
+        className="h-1.5 flex-1 overflow-hidden rounded-full bg-sky-100"
+        role="progressbar"
+        aria-label={hasTotal ? `Sync file progress: ${processed} of ${total} files` : "Scanning sync files"}
+        aria-valuemin={0}
+        aria-valuemax={hasTotal ? total : 100}
+        aria-valuenow={hasTotal ? Math.min(processed, total) : undefined}
+      >
+        <div
+          className={`h-full rounded-full bg-sky-600 transition-[width] duration-300 ${hasTotal ? "" : "w-1/3 animate-pulse"}`}
+          style={hasTotal ? { width: `${percent}%` } : undefined}
+        />
+      </div>
+      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground" aria-live="polite">
+        {hasTotal ? `${Math.min(processed, total)} / ${total} files` : "Scanning files…"}
+      </span>
+    </div>
+  );
+}
+
 export function SyncActivityLog({ config, active }: { config: SyncConfig; active: boolean }) {
   const [open, setOpen] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
@@ -111,7 +140,8 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
   const legacy = config.lastRunConflicts.length > 0 && !runsQuery.isLoading && !runsQuery.isError && !legacyCovered
     ? config.lastRunConflicts : [];
 
-  const runningNow = runs.some(r => r.status === "running");
+  const activeRun = runs.find(r => r.status === "running") ?? null;
+  const runningNow = !!activeRun;
 
   return (
     <section className="rounded-md border bg-card" aria-labelledby="sync-activity-heading" data-testid="sync-activity-log">
@@ -125,8 +155,10 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
         {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
         <History className="size-4 text-muted-foreground" aria-hidden="true" />
         <span id="sync-activity-heading" className="text-sm font-medium">Activity log</span>
-        {selectedRun && <Badge tone={runMeta[selectedRun.status].tone}>{runMeta[selectedRun.status].label}</Badge>}
+        {activeRun && <Badge tone={runMeta.running.tone}>{runMeta.running.label}</Badge>}
+        {!activeRun && selectedRun && <Badge tone={runMeta[selectedRun.status].tone}>{runMeta[selectedRun.status].label}</Badge>}
         {runningNow && <Loader2 className="size-3.5 animate-spin text-sky-700" aria-label="Run in progress" />}
+        {activeRun && <RunningFileProgress run={activeRun} />}
         <span className="ml-auto text-xs text-muted-foreground">
           {runsQuery.isLoading ? "Loading runs…" : `${runs.length} run${runs.length === 1 ? "" : "s"} (latest 50 kept)`}
           {legacy.length > 0 && ` · ${legacy.length} legacy item${legacy.length === 1 ? "" : "s"}`}

@@ -46,6 +46,7 @@ export * from './syncFileFailure';
 export * from './syncFileFailureIssue';
 export * from './syncFileFailureIssueStatus';
 export * from './syncFileFailureLatestStatus';
+export * from './syncFileProgress';
 export * from './syncFolderExclusion';
 export * from './syncInventoryTotals';
 export * from './syncLogEntry';

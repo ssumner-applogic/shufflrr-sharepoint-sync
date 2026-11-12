@@ -35,6 +35,13 @@ export const SyncRunStatus = {
   failed: 'failed',
 } as const;
 
+export interface SyncFileProgress {
+  /** @minimum 0 */
+  totalFiles: number;
+  /** @minimum 0 */
+  processedFiles: number;
+}
+
 export interface SyncSummary {
   /** @minimum 0 */
   createdFolders: number;
@@ -46,6 +53,7 @@ export interface SyncSummary {
   deletedItems: number;
   /** @minimum 0 */
   conflicts: number;
+  fileProgress?: SyncFileProgress | null;
 }
 
 export interface SyncRun {

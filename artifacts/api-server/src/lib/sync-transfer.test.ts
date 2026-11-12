@@ -224,11 +224,22 @@ test("a rejected upload is attempted once, never ambiguously replayed", async ()
   }), /403/);
   assert.equal(calls, 1);
 });
-test("Shufflrr links use portal-native routes, including generic file-history details for videos", () => {
+test("Shufflrr parent links activate folder-filtered file results, leaving native file-history links unchanged", () => {
   const links = shufflrrFailureLinks("https://example.shufflrr.com", 12, 34, 56);
   assert.match(links.fileUrl, /historyFile=56/);
-  assert.equal(new URL(links.parentFolderUrl).hash, "#!/?section=browse&search_parentFolderId=12");
+  const folder = new URL(links.parentFolderUrl);
+  const parameters = new URLSearchParams(folder.hash.slice("#!/?".length));
+  assert.equal(folder.origin, "https://example.shufflrr.com");
+  assert.equal(parameters.get("section"), "presentations");
+  assert.equal(parameters.get("searchAdvanced"), "true");
+  assert.equal(parameters.get("searchType"), "files");
+  assert.equal(parameters.get("searchStyle"), "list");
+  assert.equal(parameters.get("search_searchFolders"), "12");
+  assert.equal(parameters.has("search_parentFolderId"), false);
+  assert.equal(parameters.has("file"), false);
+  assert.equal(parameters.has("historyFile"), false);
   assert.equal(new URL(links.fileUrl).origin, "https://example.shufflrr.com");
+  assert.equal(new URL(links.fileUrl).search, "");
   assert.match(shufflrrFailureLinks("https://example.shufflrr.com", 12, 34).fileUrl, /file=34/);
 });
 test("unattempted source files receive notices, while intentional exclusions do not", async () => {

@@ -337,9 +337,10 @@ test("targeted retry copies only the requested file and never performs mirror de
     contents: async () => [sourceFile, { ...sourceFile, id: 9, name: "unrelated.txt" }],
     download: async (id: number) => { downloads.push(id); return new Response("abc"); },
   } as unknown as ShufflrrClient;
-  await performSync(fixture.database, client, {
+  const result = await performSync(fixture.database, client, {
     ...engineConfig, retryTargets: [{ sourceRootId: 1, sourceId: 3 }],
   }, () => {}, fixture.providers);
+  assert.deepEqual(result.summary.fileProgress, { totalFiles: 1, processedFiles: 1 });
   assert.deepEqual(downloads, [3]);
   assert.deepEqual(fixture.calls, ["upload:d-root:deck.pptx:new"]);
 });
@@ -360,6 +361,7 @@ test("initial sync resolves newly created parents in the same run", async () => 
   assert.equal(result.summary.inventory?.sourceFiles, 1);
   assert.equal(result.summary.inventory?.synchronizedFiles, 1);
   assert.equal(result.summary.inventory?.notSynchronizedFiles, 0);
+  assert.deepEqual(result.summary.fileProgress, { totalFiles: 1, processedFiles: 1 });
   assert.equal(fixture.rows().length, 3);
 });
 
@@ -466,6 +468,7 @@ test("verified deletions precede transfers even when an oversized file fails lat
   assert.equal(log.summary?.copiedFiles, 2);
   assert.equal(log.summary?.createdFolders, 1);
   assert.equal(log.summary?.conflicts, 1);
+  assert.deepEqual(log.summary?.fileProgress, { totalFiles: 4, processedFiles: 4 });
   assert.equal(log.conflicts[0]?.path, "Source/conflict.txt");
   assert.equal(log.events.find(row => row.status === "failed")?.path, "Source/huge.pptx");
   assert.match(log.events.find(row => row.status === "failed")!.message, /300 MB/);

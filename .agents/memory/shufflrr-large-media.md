@@ -15,11 +15,11 @@ Verify browser deep-link formats against the target portal's own public navigati
 
 **How to apply:** Preserve available file-history metadata and check the portal's current native links if navigation changes. Never put service-account cookies, API credentials or signed upload URLs in browser links.
 
-Folder-only links must use Browse filtered by the parent-folder ID, not the Presentations section without an explicit file.
+Do not treat every route in Shufflrr's public bundle as a supported current UI link; it also contains legacy Browse-table code.
 
-**Why:** The user confirmed that a folder-only Presentations link stayed on the portal home screen. The portal's public bundle supports Browse column filters for `parentFolderId`.
+**Why:** The user observed that folder-only Presentations links stayed on the home screen and legacy Browse `search_parentFolderId` links produced an empty page, despite the API confirming the folder and its contents.
 
-**How to apply:** Use the native Browse `search_parentFolderId` filter for folder-content links; keep file-detail links on their separate native routes.
+**How to apply:** Inspect the active Presentations search handler: it explicitly activates file results and maps `search_searchFolders` to a parent-folder filter. Keep file-detail links separate, and distinguish route/source checks from actual signed-in browser verification.
 
 Microsoft Graph upload acknowledgements can contain bounded missing-byte ranges, not only open-ended ranges.
 

@@ -9,6 +9,7 @@ import { FileTransferError, sourceFileStream } from "./sync-transfer";
 import { SyncFileFailureStore } from "./sync-file-failures";
 import { canContinueAfterFileError } from "./sync-error-policy";
 import { SyncInventory } from "./sync-inventory";
+import { SyncFileProgress } from "./sync-file-progress";
 import { SyncPauseRequested, syncPauseCheckpoint } from "./sync-control";
 import {
   syncConfigTable,
@@ -345,11 +346,15 @@ export async function performSync(
     deletedItems: 0,
     conflicts: 0,
   };
+  const filesToProcess = sourceRecords.filter(record => !record.entry.isFolder);
+  const fileProgress = new SyncFileProgress(filesToProcess.map(record =>
+    sourceKey(String(record.root.id), String(record.entry.id), false)));
+  summary.fileProgress = fileProgress.counts;
   // Targeted retries scan only part of the configured scope and cannot replace full-scope totals.
   const inventory = retryKeys ? undefined : new SyncInventory(config, allSourceRecords, existingMappings, initialDestinations);
   if (inventory) summary.inventory = inventory.totals;
   reporter.progress(summary, conflicts);
-  if (inventory) await reporter.flush?.();
+  await reporter.flush?.();
   const sourceByPath = new Map(sourceRecords.map(record => [record.path, record]));
   const sourceFoldersById = new Map(allSourceRecords.filter(record => record.entry.isFolder)
     .map(record => [`${record.root.id}:${record.entry.id}`, record]));
@@ -360,6 +365,8 @@ export async function performSync(
       inventory.record(record.root.id, record.entry.id, status,
         mapping ? destinationById.get(mapping.destinationId) : undefined);
     }
+    if (record && !isFolder && status !== "created" && status !== "deleted")
+      fileProgress.record(sourceKey(String(record.root.id), String(record.entry.id), false));
     const ancestorIds: number[] = [];
     let parent = record ? record.parentSourceId : null;
     while (parent && ancestorIds.length <= 100) {

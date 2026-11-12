@@ -46,10 +46,11 @@ export class SyncFileFailureStore {
   }
 }
 
-/** These hash routes are emitted by the portal's own public navigation bundle. No API credentials in links. */
+/** Use the active Presentations search, not the portal's legacy Browse-table column filters. */
 export function shufflrrFailureLinks(origin: string, parentId: number, fileId: number, historyId?: number | null) {
   const folderUrl = new URL("/Shufflrr", origin);
-  folderUrl.hash = `!/?section=browse&search_parentFolderId=${parentId}`;
+  // Folder-only navigation leaves the portal's home content visible; explicitly load file results.
+  folderUrl.hash = `!/?section=presentations&searchAdvanced=true&searchType=files&searchStyle=list&search_searchFolders=${parentId}`;
   const fileUrl = new URL(folderUrl);
   fileUrl.hash = historyId
     ? `!/?section=presentations&folder=${parentId}&mode=files&tab=details&historyFile=${historyId}`
