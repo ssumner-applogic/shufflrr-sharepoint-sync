@@ -310,6 +310,80 @@ export const SaveSyncConfigResponse = zod.object({
 })
 
 
+/**
+ * @summary Disconnect saved sync folders without deleting files, mappings, or history
+ */
+
+export const disconnectSyncResponseSourceFoldersItemNameMax = 255;
+
+
+export const disconnectSyncResponseExcludedFoldersItemNameMax = 255;
+
+
+
+export const disconnectSyncResponseExcludedFoldersItemAncestorIdsMax = 100;
+
+export const disconnectSyncResponseLastRunSummaryOneCreatedFoldersMin = 0;
+
+export const disconnectSyncResponseLastRunSummaryOneCopiedFilesMin = 0;
+
+export const disconnectSyncResponseLastRunSummaryOneUpdatedFilesMin = 0;
+
+export const disconnectSyncResponseLastRunSummaryOneDeletedItemsMin = 0;
+
+export const disconnectSyncResponseLastRunSummaryOneConflictsMin = 0;
+
+export const disconnectSyncResponseLastRunSummaryOneFileProgressOneTotalFilesMin = 0;
+
+export const disconnectSyncResponseLastRunSummaryOneFileProgressOneProcessedFilesMin = 0;
+
+
+
+export const DisconnectSyncResponse = zod.object({
+  "configured": zod.boolean(),
+  "destinationFolderId": zod.string().nullable(),
+  "destinationFolderName": zod.string().nullable(),
+  "sourceFolders": zod.array(zod.object({
+  "id": zod.number().int().min(1),
+  "name": zod.string().min(1).max(disconnectSyncResponseSourceFoldersItemNameMax)
+})),
+  "excludedFolders": zod.array(zod.object({
+  "id": zod.number().int().min(1),
+  "name": zod.string().min(1).max(disconnectSyncResponseExcludedFoldersItemNameMax),
+  "rootId": zod.number().int().min(1),
+  "ancestorIds": zod.array(zod.number().int().min(1)).min(1).max(disconnectSyncResponseExcludedFoldersItemAncestorIdsMax)
+})),
+  "enabled": zod.boolean(),
+  "pollIntervalSeconds": zod.union([zod.literal(1),zod.literal(5),zod.literal(30),zod.literal(60),zod.literal(300),zod.literal(3600)]),
+  "nextRunAt": zod.coerce.date().nullable(),
+  "providerCooldownUntil": zod.coerce.date().nullable(),
+  "lastRunAt": zod.coerce.date().nullable(),
+  "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
+  "lastRunSummary": zod.union([zod.object({
+  "createdFolders": zod.number().int().min(disconnectSyncResponseLastRunSummaryOneCreatedFoldersMin),
+  "copiedFiles": zod.number().int().min(disconnectSyncResponseLastRunSummaryOneCopiedFilesMin),
+  "updatedFiles": zod.number().int().min(disconnectSyncResponseLastRunSummaryOneUpdatedFilesMin),
+  "deletedItems": zod.number().int().min(disconnectSyncResponseLastRunSummaryOneDeletedItemsMin),
+  "conflicts": zod.number().int().min(disconnectSyncResponseLastRunSummaryOneConflictsMin),
+  "fileProgress": zod.union([zod.object({
+  "totalFiles": zod.number().int().min(disconnectSyncResponseLastRunSummaryOneFileProgressOneTotalFilesMin),
+  "processedFiles": zod.number().int().min(disconnectSyncResponseLastRunSummaryOneFileProgressOneProcessedFilesMin)
+}),zod.null()]).optional()
+}),zod.null()]),
+  "lastRunConflicts": zod.array(zod.object({
+  "path": zod.string(),
+  "kind": zod.enum(['path-conflict', 'untracked-sharepoint-item'])
+})),
+  "lastRunError": zod.string().nullable(),
+  "detachedPairs": zod.array(zod.object({
+  "id": zod.number().int(),
+  "sourceRootName": zod.string(),
+  "destinationFolderName": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
 export const getSyncFailuresQueryAfterMin = 0;
 
 export const getSyncFailuresQueryLimitDefault = 20;

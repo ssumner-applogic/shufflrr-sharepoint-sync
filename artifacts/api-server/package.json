@@ -10,7 +10,7 @@
     "sync:run": "node --enable-source-maps ./dist/sync.mjs",
     "sync:watch": "node --enable-source-maps ./dist/sync-watch.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:sync": "pnpm --filter @workspace/scripts exec tsx --test ../artifacts/api-server/src/lib/sync-protections.test.ts ../artifacts/api-server/src/lib/sync-transfer.test.ts ../artifacts/api-server/src/lib/sync-inventory.test.ts ../artifacts/api-server/src/lib/sync-file-progress.test.ts"
+    "test:sync": "pnpm --filter @workspace/scripts exec tsx --test ../artifacts/api-server/src/lib/sync-protections.test.ts ../artifacts/api-server/src/lib/sync-transfer.test.ts ../artifacts/api-server/src/lib/sync-inventory.test.ts ../artifacts/api-server/src/lib/sync-file-progress.test.ts ../artifacts/api-server/src/lib/sync-disconnect.test.ts"
   },
   "dependencies": {
     "@clerk/express": "^2.1.88",

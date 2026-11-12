@@ -12,9 +12,11 @@ import {
 } from "lucide-react";
 import {
   dismissSyncOrphan,
+  disconnectSync,
   getSyncConfig,
   getGetSyncConfigQueryKey,
   getGetSyncDashboardQueryKey,
+  getGetSyncFailuresQueryKey,
   getListShufflrrItemsQueryKey,
   listItems,
   listShufflrrItems,
@@ -31,6 +33,7 @@ import {
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { SyncActivityLog } from "./SyncActivityLog";
 import { SyncDashboard } from "./SyncDashboard";
+import { SyncDisconnectControl } from "./SyncDisconnectControl";
 import { SyncFailureBanners } from "./SyncFailureBanners";
 import { currentExclusionAncestors, folderSelectionState, toggleFolderSelection } from "./folder-selection";
 
@@ -284,7 +287,8 @@ function ConfigStatus({ config }: { config: SyncConfig }) {
   const running = config.lastRunStatus === "running";
   const cooldownUntil = config.providerCooldownUntil ? new Date(config.providerCooldownUntil) : null;
   let state: { label: string; tone: string };
-  if (!config.enabled) state = { label: running ? "Finishing active work…" : "Paused", tone: "text-muted-foreground" };
+  if (!config.configured) state = { label: "No folders connected", tone: "text-muted-foreground" };
+  else if (!config.enabled) state = { label: running ? "Finishing active work…" : "Paused", tone: "text-muted-foreground" };
   else if (running) state = { label: "Running now", tone: "text-sky-700" };
   else if (cooldownUntil && cooldownUntil.getTime() > now) {
     state = { label: `Provider cooldown until ${cooldownUntil.toLocaleTimeString()}`, tone: "text-amber-700" };
@@ -342,6 +346,7 @@ export function SyncAgent({ active }: { active: boolean }) {
   const [expandedShufflrr, setExpandedShufflrr] = useState<Set<number>>(new Set());
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [disconnected, setDisconnected] = useState(false);
   const pickersActive = active && drawerOpen;
   const savedFolderSettings = JSON.stringify(config ? {
     destinationFolderId: config.destinationFolderId,
@@ -377,7 +382,7 @@ export function SyncAgent({ active }: { active: boolean }) {
 
   const saveMutation = useMutation({
     mutationFn: (input: SyncConfigInput) => saveSyncConfig(input),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }); },
+    onSuccess: async () => { setDisconnected(false); await queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }); },
   });
   const enabledMutation = useMutation({
     mutationFn: (enabled: boolean) => setSyncEnabled({ enabled }),
@@ -404,6 +409,29 @@ export function SyncAgent({ active }: { active: boolean }) {
     mutationFn: (id: number) => dismissSyncOrphan(id),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }); },
   });
+  const disconnectMutation = useMutation({
+    mutationFn: () => disconnectSync(),
+    onSuccess: async updated => {
+      await queryClient.cancelQueries({ queryKey: getGetSyncConfigQueryKey() });
+      queryClient.setQueryData(getGetSyncConfigQueryKey(), updated);
+      setDestination(null);
+      setSelected(new Map());
+      setExcluded(new Map());
+      setExpandedSharePoint(new Set());
+      setExpandedShufflrr(new Set());
+      setParentById(new Map());
+      setPickerError(null);
+      setDisconnected(true);
+      saveMutation.reset();
+      enabledMutation.reset();
+      runNowMutation.reset();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getGetSyncDashboardQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getGetSyncFailuresQueryKey() }),
+      ]);
+    },
+  });
 
   const onParentLoaded = (parent: number, children: number[]) => {
     setParentById(previous => {
@@ -429,7 +457,7 @@ export function SyncAgent({ active }: { active: boolean }) {
   const actionError = errorText(intervalMutation.error) ?? errorText(enabledMutation.error) ??
     errorText(runNowMutation.error) ?? errorText(dismissMutation.error);
   const configError = errorText(configQuery.error);
-  const foldersLocked = !!config?.enabled || config?.lastRunStatus === "running";
+  const foldersLocked = !!config?.enabled || config?.lastRunStatus === "running" || disconnectMutation.isPending;
   const canSave = !!destination && selected.size > 0 && Array.isArray(config?.excludedFolders) && !foldersLocked && !saveMutation.isPending && !intervalMutation.isPending;
 
   return (
@@ -443,7 +471,7 @@ export function SyncAgent({ active }: { active: boolean }) {
               aria-label="Shufflrr polling interval"
               title="Saved automatically. Runs never overlap; provider cooldowns take priority."
               value={config?.pollIntervalSeconds ?? 60}
-              disabled={!config || intervalMutation.isPending || saveMutation.isPending || enabledMutation.isPending}
+              disabled={!config || intervalMutation.isPending || saveMutation.isPending || enabledMutation.isPending || disconnectMutation.isPending}
               onChange={event => {
                 const option = pollingOptions.find(option => option.value === Number(event.target.value));
                 if (option) intervalMutation.mutate(option.value);
@@ -459,7 +487,7 @@ export function SyncAgent({ active }: { active: boolean }) {
             type="button"
             onClick={() => runNowMutation.mutate()}
             disabled={!config?.enabled || !config.configured || config.lastRunStatus === "running" ||
-              runNowMutation.isPending || saveMutation.isPending || intervalMutation.isPending || enabledMutation.isPending}
+              runNowMutation.isPending || saveMutation.isPending || intervalMutation.isPending || enabledMutation.isPending || disconnectMutation.isPending}
             title={!config?.enabled ? "Start sync before requesting an immediate run."
               : config.lastRunStatus === "running" ? "A sync run is already in progress."
                 : "Queue a full sync now; provider cooldowns are still respected."}
@@ -473,7 +501,7 @@ export function SyncAgent({ active }: { active: boolean }) {
           <button
             type="button"
             onClick={() => refreshMutation.mutate()}
-            disabled={!active || refreshMutation.isPending || saveMutation.isPending || enabledMutation.isPending}
+            disabled={!active || refreshMutation.isPending || saveMutation.isPending || enabledMutation.isPending || disconnectMutation.isPending}
             aria-busy={refreshMutation.isPending}
             className="inline-flex items-center gap-2 rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-secondary disabled:opacity-50"
             data-testid="button-refresh-sync"
@@ -485,7 +513,7 @@ export function SyncAgent({ active }: { active: boolean }) {
           <button
             type="button"
             onClick={() => enabledMutation.mutate(!config.enabled)}
-            disabled={!config.configured || !Array.isArray(config.excludedFolders) || enabledMutation.isPending || intervalMutation.isPending}
+            disabled={!config.configured || !Array.isArray(config.excludedFolders) || enabledMutation.isPending || intervalMutation.isPending || saveMutation.isPending || disconnectMutation.isPending}
             aria-pressed={config.enabled}
             className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50 ${config.enabled ? "border bg-card hover:bg-secondary" : "bg-primary text-primary-foreground hover:bg-primary/90"}`}
             data-testid="button-toggle-sync"
@@ -520,6 +548,12 @@ export function SyncAgent({ active }: { active: boolean }) {
         <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
           {configError}
         </div>
+      )}
+      {disconnected && !config?.configured && (
+        <p className="rounded-md border bg-card px-4 py-3 text-sm" role="status" data-testid="status-sync-disconnected">
+          Folders disconnected. Sync is paused. Existing SharePoint files, notices, and history were kept.
+          Open folder configuration to save a new mapping.
+        </p>
       )}
       {config && <SyncDashboard active={active} config={config} />}
       {config && <ConfigStatus config={config} />}
@@ -666,6 +700,16 @@ export function SyncAgent({ active }: { active: boolean }) {
 
             {pickerError && <div className="text-sm text-destructive" role="alert">{pickerError}</div>}
 
+          <SyncDisconnectControl
+            config={config}
+            busy={disconnectMutation.isPending}
+            blockedReason={config?.enabled ? "Pause sync before disconnecting its folders."
+              : config?.lastRunStatus === "running" ? "Wait for the active sync run to finish."
+                : saveMutation.isPending || intervalMutation.isPending || enabledMutation.isPending || runNowMutation.isPending
+                  ? "Wait for the current settings change to finish." : null}
+            error={errorText(disconnectMutation.error)}
+            onConfirm={async () => { await disconnectMutation.mutateAsync(); }}
+          />
         </SheetContent>
       </Sheet>
 

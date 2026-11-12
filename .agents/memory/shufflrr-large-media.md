@@ -38,3 +38,9 @@ The user approved normal SharePoint Office metadata processing, while requiring 
 **Why:** They want meaningful size comparisons despite SharePoint's added metadata.
 
 **How to apply:** Retain original transferred/source bytes and actual stored bytes separately. Never invent a SharePoint "size without metadata" or subtract a guessed overhead. Confirm complete Office commits independently, and keep strict size checks for non-Office formats.
+
+A path conflict can be a copy left by an earlier upload whose verification failed, not necessarily an unrelated manually added file.
+
+**Why:** Live investigation found untracked destination copies after earlier chunk-acknowledgement and Office-size verification failures. The provider had retained content although the agent had never recorded a successful mapping.
+
+**How to apply:** Explain the distinction between upload failure history and a current ownership conflict. Do not automatically adopt or overwrite a same-named untracked file; require explicit resolution or reliable content verification.

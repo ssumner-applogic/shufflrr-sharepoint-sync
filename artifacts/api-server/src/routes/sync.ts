@@ -29,7 +29,7 @@ import { SYNC_LOCK_ID } from "../lib/sync-runner";
 import { ProviderBackoffError } from "@workspace/shufflrr/http-policy";
 import { exclusionNoticeKey, validateFolderExclusions } from "../lib/sync-exclusions";
 import { syncFailureRoutes } from "./sync-failures";
-import { requestSyncNow, setSyncEnabledState } from "../lib/sync-control";
+import { disconnectSyncFolders, requestSyncNow, setSyncEnabledState } from "../lib/sync-control";
 import { syncInventoryScopeKey } from "../lib/sync-inventory";
 
 const router: IRouter = Router();
@@ -348,6 +348,17 @@ router.put("/sync/config", async (req, res): Promise<void> => {
         },
       });
     });
+    res.json(await responseConfig());
+  } catch (error) {
+    operationError(req, res, error);
+  }
+});
+
+router.post("/sync/disconnect", async (req, res): Promise<void> => {
+  try {
+    const { db } = await import("@workspace/db");
+    await disconnectSyncFolders(db, SYNC_LOCK_ID);
+    req.log.info({ event: "sync_folders_disconnected" }, "Sync folders disconnected; existing copies and history retained.");
     res.json(await responseConfig());
   } catch (error) {
     operationError(req, res, error);

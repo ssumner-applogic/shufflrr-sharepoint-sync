@@ -96,6 +96,19 @@ paths:
         "401": { $ref: "#/components/responses/ShufflrrError" }
         "409": { $ref: "#/components/responses/ShufflrrError" }
         "503": { $ref: "#/components/responses/ShufflrrError" }
+  /sync/disconnect:
+    post:
+      operationId: disconnectSync
+      summary: Disconnect saved sync folders without deleting files, mappings, or history
+      responses:
+        "200":
+          description: Unconfigured paused sync state with retained notices
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncConfig" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "409": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
   /sync/failures:
     get:
       operationId: getSyncFailures

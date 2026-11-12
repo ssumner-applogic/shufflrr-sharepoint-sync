@@ -580,6 +580,80 @@ export const useSaveSyncConfig = <TError = ErrorType<ShufflrrErrorResponse>,
       return useMutation(getSaveSyncConfigMutationOptions(options), queryClient);
     }
 
+export const getDisconnectSyncUrl = () => {
+
+
+
+
+  return `/api/sync/disconnect`
+}
+
+/**
+ * @summary Disconnect saved sync folders without deleting files, mappings, or history
+ */
+export const disconnectSync = async ( options?: Parameters<typeof customFetch>[1]): Promise<SyncConfig> => {
+
+  return customFetch<SyncConfig>(getDisconnectSyncUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getDisconnectSyncMutationKey = () => ['disconnectSync'] as const;
+
+export const getDisconnectSyncMutationOptions = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disconnectSync>>, TError,void, TContext> => {
+
+const mutationKey = getDisconnectSyncMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectSync>>, void> = () => {
+
+
+          return  disconnectSync(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisconnectSyncMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectSync>>>
+
+    export type DisconnectSyncMutationError = ErrorType<ShufflrrErrorResponse>
+
+
+    /**
+ * @summary Disconnect saved sync folders without deleting files, mappings, or history
+ */
+export const useDisconnectSync = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof disconnectSync>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDisconnectSyncMutationOptions(options), queryClient);
+    }
+
 export const getGetSyncFailuresUrl = (params?: GetSyncFailuresParams,) => {
   const normalizedParams = new URLSearchParams();
 
