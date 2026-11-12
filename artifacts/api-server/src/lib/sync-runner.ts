@@ -34,6 +34,7 @@ import {
   deleteSyncItem,
   updateSyncItem,
   uploadSyncFile,
+  getSyncPathItem,
   type SyncDriveItem,
 } from "./sharepoint";
 import { approvedOverwrite, fileRuleKey } from "./sync-file-rules";
@@ -273,7 +274,7 @@ export async function performSync(
     fileRules?: SyncFileRule[];
   },
   onPhase: (phase: SyncPhase) => void,
-  providers = { loadDestinationSnapshot, createSyncFolder, updateSyncItem, uploadSyncFile, deleteSyncItem },
+  providers = { loadDestinationSnapshot, createSyncFolder, updateSyncItem, uploadSyncFile, deleteSyncItem, getSyncPathItem },
   reporter: SyncReporter = { record: async () => {}, progress: () => {} },
   checkpoint: () => Promise<void> = async () => {},
 ): Promise<{ summary: SyncRunSummary; conflicts: SyncConflict[]; failedFiles: number }> {
@@ -394,7 +395,7 @@ export async function performSync(
       itemType: isFolder ? "folder" : "file", status, message,
     });
   };
-  const recordConflict = async (path: string, isFolder: boolean, kind: SyncConflict["kind"]) => {
+  const recordConflict = async (path: string, isFolder: boolean, kind: SyncConflict["kind"], message?: string) => {
     const previousCount = conflictKeys.size;
     addConflict(conflicts, conflictKeys, path, kind);
     summary.conflicts = conflictKeys.size;
@@ -405,7 +406,7 @@ export async function performSync(
         message: "This SharePoint-only item is not managed by sync. It was left untouched.",
       });
       else await recordEvent(path, isFolder, "conflict",
-        "An existing SharePoint item occupies this path. It was left unchanged and was not adopted into sync.");
+        message ?? "An existing SharePoint item occupies this path. It was left unchanged and was not adopted into sync.");
     }
   };
   for (const record of excludedRecords) {
@@ -550,7 +551,31 @@ export async function performSync(
     let destinationItem = mapping ? destinationById.get(mapping.destinationId) : undefined;
     const originalDestination = destinationItem;
     const hadDestination = !!destinationItem;
-    const existingAtPath = destinationByPath.get(pathKey(record.path));
+    let existingAtPath = destinationByPath.get(pathKey(record.path));
+    // Delta snapshots can omit an existing conflict. An approval must use the live
+    // path, never fall through to a create-only upload because the cache missed it.
+    if (!mapping && fileRule?.action === "overwrite") {
+      if (existingAtPath) conflictDestinationIds.add(existingAtPath.id);
+      let live: SyncDriveItem;
+      try {
+        live = await providers.getSyncPathItem(config.destinationFolderId, record.path);
+      } catch (error) {
+        if (!(error instanceof AccessError) || error.status !== 404) throw error;
+        await recordConflict(record.path, false, "path-conflict",
+          "SharePoint changed since overwrite approval: the destination path no longer exists. Review the destination before approving again.");
+        continue;
+      }
+      const ownedByOther = allMappingsForDestination.some(owner => owner.destinationId === live.id &&
+        (owner.sourceRootId !== rootId || owner.sourceId !== itemId));
+      if (!approvedOverwrite(fileRule, live, ownedByOther) || live.eTag !== fileRule.expectedETag ||
+        live.parentId !== parentDestinationId) {
+        conflictDestinationIds.add(live.id);
+        await recordConflict(record.path, false, "path-conflict",
+          "SharePoint changed since overwrite approval: the destination identity, version, location, or ownership no longer matches. Nothing was overwritten; review and approve again.");
+        continue;
+      }
+      existingAtPath = { ...live, path: record.path };
+    }
 
     if (!mapping && existingAtPath) {
       const ownedByOther = allMappingsForDestination.some(owner => owner.destinationId === existingAtPath.id &&

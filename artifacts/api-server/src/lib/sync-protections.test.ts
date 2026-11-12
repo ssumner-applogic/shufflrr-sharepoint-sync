@@ -5,7 +5,7 @@ import { SetSyncIntervalBody, RetryAllSyncFilesResponse, DismissAllSyncFailuresR
 import { applyDelta, scopeSnapshot } from "./sharepoint-snapshot";
 import type { SyncDriveItem } from "./sharepoint";
 import { performSync } from "./sync-runner";
-import { syncItemsTable, type SyncItem, type SyncFileRule } from "@workspace/db/schema";
+import { syncItemsTable, syncFileRulesTable, type SyncItem, type SyncFileRule } from "@workspace/db/schema";
 import { approvedOverwrite, fileInRuleScope } from "./sync-file-rules";
 import { ResolveSyncConflictsBody, ReenableSyncFilesBody } from "@workspace/api-zod";
 import { ShufflrrError, type ShufflrrClient } from "@workspace/shufflrr";
@@ -138,6 +138,7 @@ test("all six polling intervals validate, while unsupported values are rejected"
 function engineFixture(seed: SyncItem[] = [], records: (SyncDriveItem & { path: string })[] = []) {
   let rows = [...seed];
   let writes = 0;
+  let removedRules = 0;
   const calls: string[] = [];
   const database = {
     select: () => ({ from: () => ({ where: async () => [...rows] }) }),
@@ -156,6 +157,7 @@ function engineFixture(seed: SyncItem[] = [], records: (SyncDriveItem & { path: 
       }),
     }),
     delete: (table: unknown) => ({ where: async (condition: SQL) => {
+      if (table === syncFileRulesTable) removedRules++;
       if (table === syncItemsTable) {
         const ids = new Set(new PgDialect().sqlToQuery(condition).params);
         rows = rows.filter(row => !ids.has(row.id));
@@ -165,6 +167,11 @@ function engineFixture(seed: SyncItem[] = [], records: (SyncDriveItem & { path: 
   let sequence = 0;
   const providers: Parameters<typeof performSync>[4] = {
     loadDestinationSnapshot: async () => ({ root, records, driveId: "test-drive" }),
+    getSyncPathItem: async (_root, path) => {
+      const found = records.find(record => record.path === path);
+      if (!found) throw new AccessError("itemNotFound", "Missing test destination", 404);
+      return found;
+    },
     createSyncFolder: async (parent, name) => {
       calls.push(`folder:${parent}:${name}`);
       return item(`new-${++sequence}`, name, parent, true);
@@ -179,7 +186,7 @@ function engineFixture(seed: SyncItem[] = [], records: (SyncDriveItem & { path: 
     },
     deleteSyncItem: async id => { calls.push(`delete:${id}`); },
   };
-  return { database, providers, calls, writes: () => writes, rows: () => rows };
+  return { database, providers, calls, writes: () => writes, rows: () => rows, removedRules: () => removedRules };
 }
 
 const sourceRoot = { id: 1, name: "Source", isFolder: true };
@@ -215,7 +222,7 @@ const overwriteRule: SyncFileRule = { ...ignoreRule, action: "overwrite",
 function conflictFixture() {
   return engineFixture([mapping(1, "1", "existing-folder", true)], [
     { ...item("existing-folder", "Source", "root", true), path: "Source" },
-    { ...item("existing-file", "deck.pptx", "existing-folder"), path: "Source/deck.pptx" },
+    { ...item("existing-file", "deck.pptx", "existing-folder"), eTag: '"approved-version"', path: "Source/deck.pptx" },
   ]);
 }
 test("ignore rules skip transfers without new failure issues and report separate totals", async () => {
@@ -269,6 +276,92 @@ test("approved overwrite passes a version precondition and creates a mapping onl
   assert.equal(result.conflicts.length, 0);
   assert.equal(f.rows().find(row => row.sourceId === "3")?.destinationId, "existing-file");
 });
+test("approved overwrite resolves a destination missing from the snapshot without creating a new file", async () => {
+  const f = engineFixture([mapping(1, "1", "existing-folder", true)], [
+    { ...item("existing-folder", "Source", "root", true), path: "Source" },
+  ]);
+  f.providers.getSyncPathItem = async (rootId, path) => {
+    assert.equal(rootId, "root");
+    assert.equal(path, "Source/deck.pptx");
+    return { ...item("existing-file", "deck.pptx", "existing-folder"), eTag: '"approved-version"' };
+  };
+  const upload = f.providers.uploadSyncFile;
+  f.providers.uploadSyncFile = async (...args) => {
+    assert.equal(args[3], "existing-file");
+    assert.equal(args[4], '"approved-version"', "The write must still enforce the approved version");
+    return upload(...args);
+  };
+  const log = collectLog();
+  const result = await performSync(f.database, sourceClient(), { ...engineConfig, fileRules: [overwriteRule] },
+    () => {}, f.providers, log);
+  assert.equal(result.summary.updatedFiles, 1);
+  assert.equal(result.summary.copiedFiles, 0);
+  assert.equal(result.conflicts.length, 0);
+  assert.equal(result.failedFiles, 0);
+  assert.equal(result.summary.inventory?.synchronizedFiles, 1);
+  assert.equal(f.rows().find(row => row.sourceId === "3")?.destinationId, "existing-file");
+  assert.equal(f.removedRules(), 1, "Only a verified success consumes the approval");
+  assert.equal(log.events.find(event => event.path === "Source/deck.pptx")?.status, "updated");
+});
+
+test("live approved version takes precedence over stale cached metadata", async () => {
+  const f = conflictFixture();
+  f.providers.loadDestinationSnapshot = async () => ({ root, driveId: "test-drive", records: [
+    { ...item("existing-folder", "Source", "root", true), path: "Source" },
+    { ...item("existing-file", "deck.pptx", "existing-folder"), eTag: '"stale-cache-version"', path: "Source/deck.pptx" },
+  ] });
+  const result = await performSync(f.database, sourceClient(), { ...engineConfig, fileRules: [overwriteRule] }, () => {}, f.providers);
+  assert.equal(result.summary.updatedFiles, 1);
+  assert.ok(f.calls.includes("upload:existing-folder:deck.pptx:existing-file"));
+});
+
+test("missing, changed, moved, folder and other-owned destinations cannot use an old approval", async t => {
+  const approved = { ...item("existing-file", "deck.pptx", "existing-folder"), eTag: '"approved-version"' };
+  for (const scenario of [
+    { name: "missing", live: null },
+    { name: "replaced", live: { ...approved, id: "replacement" } },
+    { name: "changed version", live: { ...approved, eTag: '"edited"' } },
+    { name: "missing version", live: { ...approved, eTag: undefined } },
+    { name: "folder", live: { ...approved, isFolder: true } },
+    { name: "moved parent", live: { ...approved, parentId: "another-folder" } },
+    { name: "another owner", live: approved, anotherOwner: true },
+  ]) await t.test(scenario.name, async () => {
+    const f = conflictFixture();
+    if (scenario.anotherOwner) f.rows().push({ ...mapping(2, "other-source", "existing-file", false) });
+    f.providers.getSyncPathItem = async () => {
+      if (!scenario.live) throw new AccessError("itemNotFound", "Destination absent", 404);
+      return scenario.live;
+    };
+    const log = collectLog();
+    const result = await performSync(f.database, sourceClient(false, async () => {
+      assert.fail("Unsafe overwrites must be rejected before downloading");
+    }), { ...engineConfig, fileRules: [overwriteRule], retryTargets: [{ sourceRootId: 1, sourceId: 3 }] },
+    () => {}, f.providers, log);
+    assert.equal(result.summary.updatedFiles, 0);
+    assert.equal(result.conflicts.length, 1);
+    assert.ok(!f.calls.some(call => call.startsWith("upload:")));
+    assert.ok(!f.rows().some(row => row.sourceId === "3"));
+    assert.equal(f.removedRules(), 0);
+    assert.match(log.events.find(event => event.path === "Source/deck.pptx")?.message ?? "", /SharePoint changed since overwrite approval/);
+  });
+});
+
+test("a live lookup permission failure stops the run rather than falling back to a new upload", async () => {
+  const f = conflictFixture();
+  f.providers.getSyncPathItem = async () => { throw new AccessError("accessDenied", "Denied", 403); };
+  await assert.rejects(performSync(f.database, sourceClient(), { ...engineConfig, fileRules: [overwriteRule] },
+    () => {}, f.providers));
+  assert.equal(f.removedRules(), 0);
+  assert.ok(!f.calls.some(call => call.startsWith("upload:")));
+});
+
+test("files without overwrite approval never use the approval lookup", async () => {
+  const f = conflictFixture();
+  f.providers.getSyncPathItem = async () => { assert.fail("Ordinary conflicts must not use the approved lookup"); };
+  const result = await performSync(f.database, sourceClient(), engineConfig, () => {}, f.providers);
+  assert.equal(result.conflicts.length, 1);
+});
+
 test("failed overwrite never adopts a file or records synchronization success", async () => {
   const f = conflictFixture();
   f.providers.uploadSyncFile = async () => { throw new AccessError("PreconditionFailed", "Destination changed after approval", 412); };
@@ -276,6 +369,7 @@ test("failed overwrite never adopts a file or records synchronization success", 
   assert.equal(result.summary.updatedFiles, 0);
   assert.equal(result.failedFiles, 1);
   assert.ok(!f.rows().some(row => row.sourceId === "3"));
+  assert.equal(f.removedRules(), 0);
 });
 test("overwrite refuses a replaced destination, folders, missing versions and another source's ownership", () => {
   const file = { id: "existing-file", isFolder: false };
