@@ -6,6 +6,22 @@ import { SyncRunJournal } from "./sync-log";
 
 const root = { id: 1, name: "Source" };
 const scope = { destinationFolderId: "destination", sourceFolders: [root] };
+
+test("archive deletion policy excludes archived files and bytes from active totals with its own scope identity", () => {
+  const archived = source(2, 100);
+  archived.entry = { ...archived.entry, isArchived: true } as typeof archived.entry;
+  const sources = [archived, source(3, 200)];
+  const enabled = new SyncInventory({ ...scope, treatArchivedAsDeleted: true }, sources, [], []);
+  assert.equal(enabled.totals.sourceFiles, 1);
+  assert.equal(enabled.totals.sourceBytes, 200);
+  assert.equal(enabled.totals.archivedFiles, 1);
+  assert.equal(enabled.totals.archivedBytes, 100);
+  assert.equal(enabled.totals.pendingFiles, 1);
+  const disabled = new SyncInventory(scope, sources, [], []);
+  assert.equal(disabled.totals.sourceFiles, 2);
+  assert.equal(disabled.totals.archivedFiles, 1);
+  assert.notEqual(disabled.totals.scopeKey, enabled.totals.scopeKey);
+});
 const source = (id: number, size?: number) => ({
   root, entry: { id, name: `${id}.pptx`, isFolder: false, size, modifiedAt: "source-version" },
   path: `Source/${id}.pptx`,

@@ -90,3 +90,11 @@ PORT=8080 pnpm start
 
 Then check `GET /healthz` and `GET /api/sharepoint/status`.
 The SharePoint status endpoint returns `401` without a Clerk session. `GET /api/auth/config` is public and returns only the publishable key needed to initialize the Clerk browser SDK.
+
+## Archived source files
+
+Run `pnpm db:migrate` before starting the updated app/worker; the additive archive-policy migration adds `sync_config.treat_archived_as_deleted` with a default of `false`. No environment variables are added. The same migration command applies to Railway and Cloud Run.
+
+Deploy the updated API, frontend and **all** workers sharing this database before enabling **Treat archived files as deleted**. Old workers ignore this setting and can recreate archived SharePoint copies. The setting is not enabled automatically by deployment. In the app, pause sync, open Folder configuration, select the setting, save and resume. The next full scan performs guarded managed-copy removals; targeted retries never delete. Archived items remain labeled in the source viewer and are separated from active dashboard totals when the policy is enabled.
+
+Turning the policy off or restoring/unarchiving a source file permits normal syncing on a later full run. It never authorizes overwriting an unrelated SharePoint file. Version-changed, ignored, excluded and unmanaged destination content is retained. Roll back application code only after pausing sync and disabling the policy; the additive database column can remain in place.

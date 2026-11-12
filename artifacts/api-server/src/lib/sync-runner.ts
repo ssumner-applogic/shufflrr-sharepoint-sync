@@ -271,6 +271,7 @@ export async function performSync(
     destinationFolderName: string;
     sourceFolders: SyncSourceFolder[];
     excludedFolders?: SyncFolderExclusion[];
+    treatArchivedAsDeleted?: boolean;
     retryTargets?: Array<{ sourceRootId: number; sourceId: number }>;
     fileRules?: SyncFileRule[];
   },
@@ -344,11 +345,16 @@ export async function performSync(
   const conflictDestinationIds = new Set<string>();
   const blockedSourceFolders = new Set<string>();
   // Absence is established by the complete source scan, not by successful uploads.
-  const liveSourceKeys = new Set(allSourceRecords.map(record =>
+  const archivedSourceKeys = new Set(allSourceRecords.filter(record =>
+    !record.entry.isFolder && record.entry.isArchived && config.treatArchivedAsDeleted)
+    .map(record => sourceKey(String(record.root.id), String(record.entry.id), false)));
+  const liveSourceKeys = new Set(allSourceRecords.filter(record =>
+    !archivedSourceKeys.has(sourceKey(String(record.root.id), String(record.entry.id), record.entry.isFolder))).map(record =>
     sourceKey(String(record.root.id), String(record.entry.id), record.entry.isFolder)));
   const mappedDestinationIds = new Set<string>();
   let failedFiles = 0;
   const summary: SyncRunSummary = {
+    archivedFiles: sourceRecords.filter(record => !record.entry.isFolder && record.entry.isArchived).length,
     runKind: retryKeys ? "retry" : "full",
     createdFolders: 0,
     copiedFiles: 0,
@@ -429,8 +435,21 @@ export async function performSync(
 
   // Full source and destination listings succeeded before any destructive action.
   // Targeted retries intentionally never perform mirror deletions.
+  const blockedArchiveKeys = new Set<string>();
+  if (!retryKeys) for (const mapping of existingMappings) {
+    const key = sourceKey(mapping.sourceRootId, mapping.sourceId, mapping.sourceIsFolder);
+    const destination = destinationById.get(mapping.destinationId);
+    if (!protectedMappingIds.has(mapping.id) && archivedSourceKeys.has(key) && destination &&
+      (!mapping.destinationCTag || mapping.destinationCTag !== destination.cTag || !destination.eTag ||
+        destination.path !== mapping.relativePath)) {
+      blockedArchiveKeys.add(key);
+      await recordConflict(mapping.relativePath, false, "path-conflict",
+        "Source is archived in Shufflrr, but its SharePoint copy changed or could not be verified. It was retained for review, not deleted.");
+    }
+  }
   const staleCandidates = retryKeys ? [] : existingMappings.filter(mapping =>
     !protectedMappingIds.has(mapping.id) &&
+    !blockedArchiveKeys.has(sourceKey(mapping.sourceRootId, mapping.sourceId, mapping.sourceIsFolder)) &&
     !liveSourceKeys.has(sourceKey(mapping.sourceRootId, mapping.sourceId, mapping.sourceIsFolder)),
   );
   const destinationAncestors = (id: string) => {
@@ -447,6 +466,8 @@ export async function performSync(
   const allManagedIds = new Set(allMappingsForDestination.map(mapping => mapping.destinationId));
   const deletionProtectedIds = new Set([
     ...excludedDestinationIds, ...detachedDestinationIds,
+    ...existingMappings.filter(mapping => blockedArchiveKeys.has(sourceKey(
+      mapping.sourceRootId, mapping.sourceId, mapping.sourceIsFolder))).map(mapping => mapping.destinationId),
     ...initialDestinations.filter(item => !allManagedIds.has(item.id)).map(item => item.id),
     // A live source child may still be inside a stale destination parent until it is moved below.
     ...existingMappings.filter(mapping =>
@@ -488,14 +509,17 @@ export async function performSync(
           if (!removedIds.has(id)) { removedIds.add(id); descendants.push(id); }
         }
       }
-      await providers.deleteSyncItem(mapping.destinationId);
+      const archived = archivedSourceKeys.has(sourceKey(mapping.sourceRootId, mapping.sourceId, false));
+      await providers.deleteSyncItem(mapping.destinationId, archived ? destinationById.get(mapping.destinationId)?.eTag : undefined);
       summary.deletedItems += 1;
       for (const id of removedIds) {
         deletedDestinationIds.add(id);
         destinationById.delete(id);
       }
       await recordEvent(mapping.relativePath, mapping.sourceIsFolder, "deleted",
-        "Managed SharePoint copy deleted after a complete source scan confirmed its source is absent.");
+        archivedSourceKeys.has(sourceKey(mapping.sourceRootId, mapping.sourceId, false))
+          ? "Managed SharePoint copy removed because the source is archived in Shufflrr and Treat archived files as deleted is enabled."
+          : "Managed SharePoint copy deleted after a complete source scan confirmed its source is absent.");
       deletionEvents.add(mapping.destinationId);
     } catch (error) {
       await recordEvent(mapping.relativePath, mapping.sourceIsFolder, "failed", safeError(error));
@@ -536,6 +560,21 @@ export async function performSync(
       const copy = destinationByPath.get(pathKey(record.path));
       if (copy) conflictDestinationIds.add(copy.id);
       await recordEvent(record.path, false, "skipped", "Ignored by a persistent file rule. Re-enable it from Ignored files; both copies were left untouched.", true);
+      continue;
+    }
+    if (!record.entry.isFolder && record.entry.isArchived && config.treatArchivedAsDeleted) {
+      if (blockedArchiveKeys.has(sourceKey(rootId, itemId, false))) continue;
+      await db.update(syncFileFailuresTable).set({ resolvedAt: new Date(), retryRequestedAt: null })
+        .where(and(eq(syncFileFailuresTable.sourceRootId, record.root.id),
+          eq(syncFileFailuresTable.sourceId, record.entry.id),
+          eq(syncFileFailuresTable.destinationRootId, config.destinationFolderId)));
+      if (!retryKeys) await db.delete(syncFileRulesTable).where(and(
+        eq(syncFileRulesTable.sourceRootId, record.root.id), eq(syncFileRulesTable.sourceId, record.entry.id),
+        eq(syncFileRulesTable.destinationRootId, config.destinationFolderId), eq(syncFileRulesTable.action, "overwrite")));
+      await recordEvent(record.path, false, "skipped",
+        retryKeys
+          ? "Archived in Shufflrr. Excluded from uploads; managed-copy removal is checked on the next full sync, not a targeted retry."
+          : "Archived in Shufflrr. Excluded from uploads by Treat archived files as deleted; only verified managed SharePoint copies can be removed.", true);
       continue;
     }
     if (mapping) mappedDestinationIds.add(mapping.destinationId);
@@ -889,6 +928,7 @@ async function executeScheduledSync(): Promise<SyncResult> {
       destinationFolderName: config.destinationFolderName,
       sourceFolders: config.sourceFolders,
       excludedFolders: config.excludedFolders,
+      treatArchivedAsDeleted: config.treatArchivedAsDeleted,
       fileRules,
       ...(pendingRetries.length ? { retryTargets: pendingRetries.map(row =>
         ({ sourceRootId: row.sourceRootId, sourceId: row.sourceId })) } : {}),

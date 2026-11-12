@@ -15,6 +15,7 @@ export function syncDashboardScopeKey(config: SyncConfig | undefined) {
       destination: config?.destinationFolderId ?? null,
       sources: (config?.sourceFolders ?? []).map(folder => folder.id).sort((a, b) => a - b),
       excluded: (config?.excludedFolders ?? []).map(folder => `${folder.rootId}:${folder.id}`).sort(),
+      treatArchivedAsDeleted: config?.treatArchivedAsDeleted ?? false,
     },
   ] as const;
 }
@@ -66,7 +67,7 @@ function Totals({ inventory, stale }: { inventory: SyncInventoryTotals; stale: b
 
 export function SyncDashboard({ active, config, reviewIgnored }: { active: boolean; config: SyncConfig | undefined; reviewIgnored: () => void }) {
   const queryClient = useQueryClient();
-  const queryKey = useMemo(() => syncDashboardScopeKey(config), [config?.destinationFolderId, config?.sourceFolders, config?.excludedFolders]);
+  const queryKey = useMemo(() => syncDashboardScopeKey(config), [config?.destinationFolderId, config?.sourceFolders, config?.excludedFolders, config?.treatArchivedAsDeleted]);
   const dashboard = useGetSyncDashboard({
     query: { queryKey, enabled: active && !!config, refetchInterval: active ? 5000 : false, refetchIntervalInBackground: false },
   });
@@ -94,6 +95,14 @@ export function SyncDashboard({ active, config, reviewIgnored }: { active: boole
       </div>
 
       <div className="mt-3">
+        {!!inventory?.archivedFiles && (
+          <p className="mb-2 text-xs text-muted-foreground" data-testid="text-dashboard-archived-files">
+            {inventory.archivedFiles} archived source file{inventory.archivedFiles === 1 ? "" : "s"} ({mb(inventory.archivedBytes ?? 0)}).
+            {config?.treatArchivedAsDeleted
+              ? " Excluded from active totals; managed SharePoint copies are removed during full syncs. Ignored or protected copies may be retained."
+              : " Included in totals; Treat archived files as deleted is off."}
+          </p>
+        )}
         {showError && (
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">
             <AlertTriangle className="size-4" aria-hidden="true" />

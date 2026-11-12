@@ -28,6 +28,7 @@ export interface SyncConflict {
 }
 
 export interface SyncRunSummary {
+  archivedFiles?: number;
   /** Optional for pre-upgrade history. Stored inside existing summary JSON. */
   runKind?: "full" | "retry";
   createdFolders: number;
@@ -58,10 +59,13 @@ export interface SyncInventorySnapshot {
   notSynchronizedFiles: number;
   ignoredFiles?: number;
   ignoredBytes?: number;
+  archivedFiles?: number;
+  archivedBytes?: number;
 }
 
 export const syncConfigTable = pgTable("sync_config", {
   id: integer("id").primaryKey().default(1),
+  treatArchivedAsDeleted: boolean("treat_archived_as_deleted").notNull().default(false),
   destinationFolderId: text("destination_folder_id"),
   destinationFolderName: text("destination_folder_name"),
   sourceFolders: jsonb("source_folders").$type<SyncSourceFolder[]>().notNull().default(sql`'[]'::jsonb`),

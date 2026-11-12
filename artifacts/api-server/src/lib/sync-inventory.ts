@@ -4,6 +4,7 @@ import type { Entry } from "@workspace/shufflrr";
 import type { SyncDriveItem } from "./sharepoint";
 
 interface Scope {
+  treatArchivedAsDeleted?: boolean;
   destinationFolderId: string;
   sourceFolders: SyncSourceFolder[];
   excludedFolders?: SyncFolderExclusion[];
@@ -17,6 +18,7 @@ type Outcome = "synchronized" | "failed" | "pending" | "ignored";
 export function syncInventoryScopeKey(scope: Scope): string {
   return createHash("sha256").update(JSON.stringify({
     destination: scope.destinationFolderId,
+    treatArchivedAsDeleted: scope.treatArchivedAsDeleted ?? false,
     roots: scope.sourceFolders.map(root => root.id).sort((a, b) => a - b),
     excluded: (scope.excludedFolders ?? []).map(folder => `${folder.rootId}:${folder.id}`).sort(),
     ignored: (scope.fileRules ?? []).filter(rule => rule.action === "ignore" &&
@@ -36,7 +38,7 @@ export class SyncInventory {
       sourceFiles: 0, sourceBytes: 0, sourceUnknownSizeFiles: 0,
       synchronizedFiles: 0, synchronizedBytes: 0,
       failedFiles: 0, pendingFiles: 0, notSynchronizedFiles: 0,
-      ignoredFiles: 0, ignoredBytes: 0,
+      ignoredFiles: 0, ignoredBytes: 0, archivedFiles: 0, archivedBytes: 0,
     };
     const bySource = new Map(mappings.filter(item => !item.sourceIsFolder &&
       item.destinationRootId === scope.destinationFolderId).map(item => [`${item.sourceRootId}:${item.sourceId}`, item]));
@@ -45,6 +47,11 @@ export class SyncInventory {
       if (source.entry.isFolder) continue;
       const key = `${source.root.id}:${source.entry.id}`;
       if (this.files.has(key)) continue;
+      if (source.entry.isArchived) {
+        this.totals.archivedFiles!++;
+        this.totals.archivedBytes! += source.entry.size ?? 0;
+        if (scope.treatArchivedAsDeleted) continue;
+      }
       this.totals.sourceFiles++;
       if (source.entry.size === undefined) this.totals.sourceUnknownSizeFiles++;
       else this.totals.sourceBytes += source.entry.size;

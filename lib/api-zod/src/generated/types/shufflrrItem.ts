@@ -7,6 +7,7 @@
  */
 
 export interface ShufflrrItem {
+  isArchived?: boolean;
   id: number;
   name: string;
   isFolder: boolean;

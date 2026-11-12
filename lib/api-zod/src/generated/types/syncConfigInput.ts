@@ -10,6 +10,7 @@ import type { SyncFolderExclusion } from './syncFolderExclusion';
 import type { SyncSourceFolder } from './syncSourceFolder';
 
 export interface SyncConfigInput {
+  treatArchivedAsDeleted?: boolean;
   pollIntervalSeconds?: SyncConfigInputPollIntervalSeconds;
   /**
      * @minLength 1

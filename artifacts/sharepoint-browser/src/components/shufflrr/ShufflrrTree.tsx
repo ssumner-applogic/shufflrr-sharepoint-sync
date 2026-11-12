@@ -45,12 +45,13 @@ function ShufflrrBranch({ folderId, level, ancestors, active, expanded, toggle, 
             treeKey={key}
             level={level}
             name={it.name}
+            archived={it.isArchived}
             isFolder={it.isFolder}
             expanded={open}
             onToggle={toggle}
             size={it.size}
             modifiedAt={it.modifiedAt}
-            fileLink={it.isFolder ? undefined : { href: downloadHref(it.id), download: it.name }}
+            fileLink={it.isFolder || it.isArchived ? undefined : { href: downloadHref(it.id), download: it.name }}
             testId={it.isFolder ? `shufflrr-folder-${it.id}` : `shufflrr-file-${it.id}`}
           >
             {open && (ancestors.has(key)

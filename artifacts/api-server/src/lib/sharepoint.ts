@@ -291,14 +291,16 @@ export async function updateSharePointItem(
   return itemResult(updated);
 }
 
-export async function deleteSharePointItem(itemId: string): Promise<void> {
+export async function deleteSharePointItem(itemId: string, expectedETag?: string): Promise<void> {
   const { driveId } = await location();
   const rootId = await getRootId(driveId);
   const item = await getDriveItem(driveId, itemId);
   if (item.id === rootId || !item.parentReference?.id) {
     throw new AccessError("ProtectedRoot", "The library root cannot be deleted.", 400);
   }
-  await graph<void>(`/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}`, { method: "DELETE" });
+  await graph<void>(`/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}`, {
+    method: "DELETE", ...(expectedETag ? { headers: { "If-Match": expectedETag } } : {}),
+  });
 }
 
 export interface SyncDriveItem {
@@ -563,8 +565,8 @@ export async function uploadSyncFile(
   }
 }
 
-export async function deleteSyncItem(itemId: string): Promise<void> {
-  await deleteSharePointItem(itemId);
+export async function deleteSyncItem(itemId: string, expectedETag?: string): Promise<void> {
+  await deleteSharePointItem(itemId, expectedETag);
 }
 
 async function findWriteProbe(driveId: string, fileName: string): Promise<string | undefined> {

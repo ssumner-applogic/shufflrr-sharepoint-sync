@@ -261,6 +261,96 @@ function conflictFixture() {
     { ...item("existing-file", "deck.pptx", "existing-folder"), eTag: '"approved-version"', path: "Source/deck.pptx" },
   ]);
 }
+
+function archiveFixture() {
+  const records = [
+    { ...item("existing-folder", "Source", "root", true), path: "Source" },
+    { ...item("existing-file", "deck.pptx", "existing-folder"), cTag: "old-tag", eTag: '"archive-version"', path: "Source/deck.pptx" },
+  ];
+  const f = engineFixture([mapping(1, "1", "existing-folder", true), {
+    ...mapping(2, "3", "existing-file", false), sourceModifiedAt: sourceFile.modifiedAt,
+  }], records);
+  const client = sourceClient();
+  client.contents = async () => [{ ...sourceFile, isArchived: true }];
+  return { ...f, client, records };
+}
+
+test("archive policy is opt-in and retains an unchanged archived copy when disabled", async () => {
+  const f = archiveFixture();
+  const result = await performSync(f.database, f.client, engineConfig, () => {}, f.providers);
+  assert.ok(!f.calls.some(call => call.startsWith("delete:") || call.startsWith("upload:")));
+  assert.equal(result.summary.archivedFiles, 1);
+  assert.equal(result.summary.inventory?.sourceFiles, 1);
+});
+
+test("an incomplete source listing never authorizes archive deletions", async () => {
+  const f = archiveFixture();
+  f.client.contents = async id => {
+    if (id !== 1) throw new Error("Source listing interrupted");
+    return [{ ...sourceFile, isArchived: true }, { id: 2, name: "Nested", isFolder: true }];
+  };
+  await assert.rejects(performSync(f.database, f.client, { ...engineConfig, treatArchivedAsDeleted: true }, () => {}, f.providers));
+  assert.ok(!f.calls.some(call => call.startsWith("delete:") || call.startsWith("upload:")));
+  assert.ok(f.rows().some(row => row.sourceId === "3"));
+});
+
+test("archive policy conditionally deletes only the managed copy, logs why, and allows unarchived files to sync again", async () => {
+  const f = archiveFixture();
+  const log = collectLog();
+  let deleteTag: string | undefined;
+  const remove = f.providers!.deleteSyncItem;
+  f.providers!.deleteSyncItem = async (id, tag) => { deleteTag = tag; await remove(id, tag); };
+  const config = { ...engineConfig, treatArchivedAsDeleted: true };
+  const result = await performSync(f.database, f.client, config, () => {}, f.providers, log);
+  assert.equal(deleteTag, '"archive-version"');
+  assert.equal(result.summary.deletedItems, 1);
+  assert.equal(result.summary.inventory?.sourceFiles, 0);
+  assert.equal(result.summary.inventory?.archivedFiles, 1);
+  assert.deepEqual(result.summary.fileProgress, { totalFiles: 1, processedFiles: 1 });
+  assert.ok(log.events.some(event => event.status === "deleted" && event.message.includes("archived")));
+  assert.ok(!f.calls.some(call => call.startsWith("upload:")));
+  assert.ok(!f.rows().some(row => row.sourceId === "3"));
+  f.records.splice(1, 1);
+  f.client.contents = async () => [{ ...sourceFile, isArchived: false }];
+  const restored = await performSync(f.database, f.client, config, () => {}, f.providers);
+  assert.equal(restored.summary.copiedFiles, 1);
+  assert.ok(f.rows().some(row => row.sourceId === "3"));
+});
+
+test("changed and unverifiable archived SharePoint copies remain conflicts instead of being deleted", async () => {
+  for (const patch of [{ cTag: "edited" }, { eTag: undefined }]) {
+    const f = archiveFixture();
+    Object.assign(f.records[1], patch);
+    const log = collectLog();
+    const result = await performSync(f.database, f.client, { ...engineConfig, treatArchivedAsDeleted: true }, () => {}, f.providers, log);
+    assert.ok(!f.calls.some(call => call.startsWith("delete:") || call.startsWith("upload:")));
+    assert.ok(result.conflicts.length > 0);
+    assert.ok(log.events.some(event => event.status === "conflict" && event.message.includes("archived")));
+  }
+});
+
+test("archived files still honor ignore rules, and targeted retries never remove their copies", async () => {
+  for (const config of [
+    { ...engineConfig, treatArchivedAsDeleted: true, fileRules: [ignoreRule] },
+    { ...engineConfig, treatArchivedAsDeleted: true, retryTargets: [{ sourceRootId: 1, sourceId: 3 }] },
+  ]) {
+    const f = archiveFixture();
+    await performSync(f.database, f.client, config, () => {}, f.providers);
+    assert.ok(!f.calls.some(call => call.startsWith("delete:") || call.startsWith("upload:")));
+    assert.ok(f.rows().some(row => row.sourceId === "3"));
+  }
+});
+
+test("an untracked archived target is retained, and a rejected conditional delete cannot erase its mapping", async () => {
+  const untracked = archiveFixture();
+  const f = engineFixture(untracked.rows().filter(row => row.sourceId !== "3"), untracked.records);
+  await performSync(f.database, untracked.client, { ...engineConfig, treatArchivedAsDeleted: true }, () => {}, f.providers);
+  assert.ok(!f.calls.some(call => call.startsWith("delete:") || call.startsWith("upload:")));
+  const changed = archiveFixture();
+  changed.providers!.deleteSyncItem = async () => { throw new AccessError("preconditionFailed", "Version changed", 412); };
+  await assert.rejects(performSync(changed.database, changed.client, { ...engineConfig, treatArchivedAsDeleted: true }, () => {}, changed.providers));
+  assert.ok(changed.rows().some(row => row.sourceId === "3"));
+});
 test("ignore rules skip transfers without new failure issues and report separate totals", async () => {
   const f = conflictFixture();
   const log = collectLog();

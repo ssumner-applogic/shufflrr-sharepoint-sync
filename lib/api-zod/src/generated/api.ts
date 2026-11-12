@@ -11,6 +11,8 @@ import * as zod from 'zod';
 /**
  * @summary Read the most recent fifty sync runs
  */
+export const getSyncRunsResponseSummaryOneArchivedFilesMin = 0;
+
 export const getSyncRunsResponseSummaryOneCreatedFoldersMin = 0;
 
 export const getSyncRunsResponseSummaryOneCopiedFilesMin = 0;
@@ -33,6 +35,7 @@ export const GetSyncRunsResponseItem = zod.object({
   "finishedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['running', 'success', 'partial', 'failed']),
   "summary": zod.union([zod.object({
+  "archivedFiles": zod.number().int().min(getSyncRunsResponseSummaryOneArchivedFilesMin).optional(),
   "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(getSyncRunsResponseSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(getSyncRunsResponseSummaryOneCopiedFilesMin),
@@ -109,6 +112,10 @@ export const getSyncDashboardResponseInventoryOneNotSynchronizedFilesMin = 0;
 
 export const getSyncDashboardResponseInventoryOneIgnoredFilesMin = 0;
 
+export const getSyncDashboardResponseInventoryOneArchivedFilesMin = 0;
+
+export const getSyncDashboardResponseInventoryOneArchivedBytesMin = 0;
+
 export const getSyncDashboardResponseInventoryOneIgnoredBytesMin = 0;
 
 
@@ -127,6 +134,8 @@ export const GetSyncDashboardResponse = zod.object({
   "pendingFiles": zod.number().int().min(getSyncDashboardResponseInventoryOnePendingFilesMin),
   "notSynchronizedFiles": zod.number().int().min(getSyncDashboardResponseInventoryOneNotSynchronizedFilesMin),
   "ignoredFiles": zod.number().int().min(getSyncDashboardResponseInventoryOneIgnoredFilesMin).optional(),
+  "archivedFiles": zod.number().int().min(getSyncDashboardResponseInventoryOneArchivedFilesMin).optional(),
+  "archivedBytes": zod.number().min(getSyncDashboardResponseInventoryOneArchivedBytesMin).optional(),
   "ignoredBytes": zod.number().int().min(getSyncDashboardResponseInventoryOneIgnoredBytesMin).optional()
 }),zod.null()])
 })
@@ -147,6 +156,8 @@ export const getSyncConfigResponseExcludedFoldersItemNameMax = 255;
 
 export const getSyncConfigResponseExcludedFoldersItemAncestorIdsMax = 100;
 
+export const getSyncConfigResponseLastRunSummaryOneArchivedFilesMin = 0;
+
 export const getSyncConfigResponseLastRunSummaryOneCreatedFoldersMin = 0;
 
 export const getSyncConfigResponseLastRunSummaryOneCopiedFilesMin = 0;
@@ -164,6 +175,7 @@ export const getSyncConfigResponseLastRunSummaryOneFileProgressOneProcessedFiles
 
 
 export const GetSyncConfigResponse = zod.object({
+  "treatArchivedAsDeleted": zod.boolean().optional(),
   "configured": zod.boolean(),
   "ignoredFileCount": zod.number().int().min(getSyncConfigResponseIgnoredFileCountMin).optional(),
   "destinationFolderId": zod.string().nullable(),
@@ -185,6 +197,7 @@ export const GetSyncConfigResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
+  "archivedFiles": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneArchivedFilesMin).optional(),
   "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneCopiedFilesMin),
@@ -235,6 +248,7 @@ export const saveSyncConfigBodyExcludedFoldersMax = 1000;
 
 
 export const SaveSyncConfigBody = zod.object({
+  "treatArchivedAsDeleted": zod.boolean().optional(),
   "pollIntervalSeconds": zod.union([zod.literal(1),zod.literal(5),zod.literal(30),zod.literal(60),zod.literal(300),zod.literal(3600)]).default(saveSyncConfigBodyPollIntervalSecondsDefault),
   "destinationFolderId": zod.string().min(1).max(saveSyncConfigBodyDestinationFolderIdMax),
   "destinationFolderName": zod.string().min(1).max(saveSyncConfigBodyDestinationFolderNameMax),
@@ -262,6 +276,8 @@ export const saveSyncConfigResponseExcludedFoldersItemNameMax = 255;
 
 export const saveSyncConfigResponseExcludedFoldersItemAncestorIdsMax = 100;
 
+export const saveSyncConfigResponseLastRunSummaryOneArchivedFilesMin = 0;
+
 export const saveSyncConfigResponseLastRunSummaryOneCreatedFoldersMin = 0;
 
 export const saveSyncConfigResponseLastRunSummaryOneCopiedFilesMin = 0;
@@ -279,6 +295,7 @@ export const saveSyncConfigResponseLastRunSummaryOneFileProgressOneProcessedFile
 
 
 export const SaveSyncConfigResponse = zod.object({
+  "treatArchivedAsDeleted": zod.boolean().optional(),
   "configured": zod.boolean(),
   "ignoredFileCount": zod.number().int().min(saveSyncConfigResponseIgnoredFileCountMin).optional(),
   "destinationFolderId": zod.string().nullable(),
@@ -300,6 +317,7 @@ export const SaveSyncConfigResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
+  "archivedFiles": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneArchivedFilesMin).optional(),
   "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneCopiedFilesMin),
@@ -388,6 +406,8 @@ export const disconnectSyncResponseExcludedFoldersItemNameMax = 255;
 
 export const disconnectSyncResponseExcludedFoldersItemAncestorIdsMax = 100;
 
+export const disconnectSyncResponseLastRunSummaryOneArchivedFilesMin = 0;
+
 export const disconnectSyncResponseLastRunSummaryOneCreatedFoldersMin = 0;
 
 export const disconnectSyncResponseLastRunSummaryOneCopiedFilesMin = 0;
@@ -405,6 +425,7 @@ export const disconnectSyncResponseLastRunSummaryOneFileProgressOneProcessedFile
 
 
 export const DisconnectSyncResponse = zod.object({
+  "treatArchivedAsDeleted": zod.boolean().optional(),
   "configured": zod.boolean(),
   "ignoredFileCount": zod.number().int().min(disconnectSyncResponseIgnoredFileCountMin).optional(),
   "destinationFolderId": zod.string().nullable(),
@@ -426,6 +447,7 @@ export const DisconnectSyncResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
+  "archivedFiles": zod.number().int().min(disconnectSyncResponseLastRunSummaryOneArchivedFilesMin).optional(),
   "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(disconnectSyncResponseLastRunSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(disconnectSyncResponseLastRunSummaryOneCopiedFilesMin),
@@ -572,6 +594,8 @@ export const setSyncIntervalResponseExcludedFoldersItemNameMax = 255;
 
 export const setSyncIntervalResponseExcludedFoldersItemAncestorIdsMax = 100;
 
+export const setSyncIntervalResponseLastRunSummaryOneArchivedFilesMin = 0;
+
 export const setSyncIntervalResponseLastRunSummaryOneCreatedFoldersMin = 0;
 
 export const setSyncIntervalResponseLastRunSummaryOneCopiedFilesMin = 0;
@@ -589,6 +613,7 @@ export const setSyncIntervalResponseLastRunSummaryOneFileProgressOneProcessedFil
 
 
 export const SetSyncIntervalResponse = zod.object({
+  "treatArchivedAsDeleted": zod.boolean().optional(),
   "configured": zod.boolean(),
   "ignoredFileCount": zod.number().int().min(setSyncIntervalResponseIgnoredFileCountMin).optional(),
   "destinationFolderId": zod.string().nullable(),
@@ -610,6 +635,7 @@ export const SetSyncIntervalResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
+  "archivedFiles": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneArchivedFilesMin).optional(),
   "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneCopiedFilesMin),
@@ -654,6 +680,8 @@ export const setSyncEnabledResponseExcludedFoldersItemNameMax = 255;
 
 export const setSyncEnabledResponseExcludedFoldersItemAncestorIdsMax = 100;
 
+export const setSyncEnabledResponseLastRunSummaryOneArchivedFilesMin = 0;
+
 export const setSyncEnabledResponseLastRunSummaryOneCreatedFoldersMin = 0;
 
 export const setSyncEnabledResponseLastRunSummaryOneCopiedFilesMin = 0;
@@ -671,6 +699,7 @@ export const setSyncEnabledResponseLastRunSummaryOneFileProgressOneProcessedFile
 
 
 export const SetSyncEnabledResponse = zod.object({
+  "treatArchivedAsDeleted": zod.boolean().optional(),
   "configured": zod.boolean(),
   "ignoredFileCount": zod.number().int().min(setSyncEnabledResponseIgnoredFileCountMin).optional(),
   "destinationFolderId": zod.string().nullable(),
@@ -692,6 +721,7 @@ export const SetSyncEnabledResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
+  "archivedFiles": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneArchivedFilesMin).optional(),
   "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneCopiedFilesMin),
@@ -732,6 +762,8 @@ export const requestSyncNowResponseExcludedFoldersItemNameMax = 255;
 
 export const requestSyncNowResponseExcludedFoldersItemAncestorIdsMax = 100;
 
+export const requestSyncNowResponseLastRunSummaryOneArchivedFilesMin = 0;
+
 export const requestSyncNowResponseLastRunSummaryOneCreatedFoldersMin = 0;
 
 export const requestSyncNowResponseLastRunSummaryOneCopiedFilesMin = 0;
@@ -749,6 +781,7 @@ export const requestSyncNowResponseLastRunSummaryOneFileProgressOneProcessedFile
 
 
 export const RequestSyncNowResponse = zod.object({
+  "treatArchivedAsDeleted": zod.boolean().optional(),
   "configured": zod.boolean(),
   "ignoredFileCount": zod.number().int().min(requestSyncNowResponseIgnoredFileCountMin).optional(),
   "destinationFolderId": zod.string().nullable(),
@@ -770,6 +803,7 @@ export const RequestSyncNowResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
+  "archivedFiles": zod.number().int().min(requestSyncNowResponseLastRunSummaryOneArchivedFilesMin).optional(),
   "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(requestSyncNowResponseLastRunSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(requestSyncNowResponseLastRunSummaryOneCopiedFilesMin),
@@ -821,6 +855,7 @@ export const ListShufflrrItemsQueryParams = zod.object({
 export const ListShufflrrItemsResponse = zod.object({
   "portalUrl": zod.string(),
   "items": zod.array(zod.object({
+  "isArchived": zod.boolean().optional(),
   "id": zod.number().int(),
   "name": zod.string(),
   "isFolder": zod.boolean(),

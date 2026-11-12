@@ -286,6 +286,12 @@ export function SyncActivityLog({ config, active, retryQueuedAt = null, onRetryS
                   {selectedRun.finishedAt ? ` · Finished ${fmt(selectedRun.finishedAt)}` : " · In progress"}
                 </span>
               </div>
+              {!!selectedRun.summary?.archivedFiles && (
+                <p className="text-xs text-muted-foreground" data-testid="sync-run-archived-files">
+                  {selectedRun.summary.archivedFiles} archived source file{selectedRun.summary.archivedFiles === 1 ? "" : "s"} detected.
+                  See Deleted and Skipped entries for archive-policy actions, or Conflict for retained copies.
+                </p>
+              )}
               {selectedRun.summary?.runKind === "retry" && (
                 <p className="text-xs font-medium" role="status" data-testid="sync-retry-result">
                   Retry failed files · {runMeta[selectedRun.status].label}

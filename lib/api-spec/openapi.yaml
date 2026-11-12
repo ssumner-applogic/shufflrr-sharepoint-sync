@@ -657,6 +657,7 @@ components:
       type: object
       required: [createdFolders, copiedFiles, updatedFiles, deletedItems, conflicts]
       properties:
+        archivedFiles: { type: integer, minimum: 0 }
         runKind: { type: string, enum: [full, retry] }
         createdFolders: { type: integer, minimum: 0 }
         copiedFiles: { type: integer, minimum: 0 }
@@ -705,11 +706,14 @@ components:
         pendingFiles: { type: integer, minimum: 0 }
         notSynchronizedFiles: { type: integer, minimum: 0 }
         ignoredFiles: { type: integer, minimum: 0 }
+        archivedFiles: { type: integer, minimum: 0 }
+        archivedBytes: { type: number, minimum: 0 }
         ignoredBytes: { type: integer, minimum: 0 }
     SyncConfig:
       type: object
       required: [configured, destinationFolderId, destinationFolderName, sourceFolders, excludedFolders, enabled, pollIntervalSeconds, nextRunAt, providerCooldownUntil, lastRunAt, lastRunStatus, lastRunSummary, lastRunConflicts, lastRunError, detachedPairs]
       properties:
+        treatArchivedAsDeleted: { type: boolean }
         configured: { type: boolean }
         ignoredFileCount: { type: integer, minimum: 0 }
         destinationFolderId: { type: ["string", "null"] }
@@ -738,6 +742,7 @@ components:
       type: object
       required: [destinationFolderId, destinationFolderName, sourceFolders, excludedFolders]
       properties:
+        treatArchivedAsDeleted: { type: boolean }
         pollIntervalSeconds: { type: integer, enum: [1, 5, 30, 60, 300, 3600], default: 60 }
         destinationFolderId: { type: string, minLength: 1, maxLength: 500 }
         destinationFolderName: { type: string, minLength: 1, maxLength: 255 }
@@ -764,6 +769,7 @@ components:
       type: object
       required: [id, name, isFolder, size, modifiedAt, permissions]
       properties:
+        isArchived: { type: boolean }
         id: { type: integer }
         name: { type: string }
         isFolder: { type: boolean }

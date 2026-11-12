@@ -7,7 +7,9 @@
 - [OpenAPI parameter collisions](openapi-parameter-collisions.md) — combined path and query parameters can collide in generated exports; fix the contract, not generated files.
 - [Shufflrr large media](shufflrr-large-media.md) — source content includes large videos; verify native portal links rather than assuming presentation-only URLs.
 - [Sync deletion policy](sync-deletion-policy.md) — verified deletions run first so one persistent upload failure cannot indefinitely block unrelated cleanup.
+- [Shufflrr archive policy](shufflrr-archive-policy.md) — archives remain listed by the API; opt-in managed deletion, gray source labels, and consistent worker versions are required.
 - [File ignore policy](sync-file-rule-policy.md) — ignored files must remain discoverable; re-enabling never grants overwrite permission.
 - [Neon worker locks](neon-worker-locks.md) — transaction pooling requires transaction-scoped run locks; old session locks can remain stranded.
 - [Sync control timestamps](sync-control-timestamps.md) — worker status writes must not masquerade as newer Start or Sync now requests.
 - [Grouped retry behavior](sync-retry-behavior.md) — one targeted retry job per queued group; keep its results selected when later full syncs start.
+- [File metadata provenance](file-metadata-provenance.md) — retain source metadata in Neon by SharePoint file identity, including metadata-only changes and type-specific fields.

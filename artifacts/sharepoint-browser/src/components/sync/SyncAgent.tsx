@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   Folder,
+  Info,
   Loader2,
   RefreshCw,
   Save,
@@ -32,6 +33,7 @@ import {
   type SyncFolderExclusion,
 } from "@workspace/api-client-react";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SyncActivityLog } from "./SyncActivityLog";
 import { SyncDashboard } from "./SyncDashboard";
 import { SyncDisconnectControl } from "./SyncDisconnectControl";
@@ -345,6 +347,7 @@ export function SyncAgent({ active }: { active: boolean }) {
   const [destination, setDestination] = useState<{ id: string; name: string } | null>(null);
   const [selected, setSelected] = useState<Map<number, SyncSourceFolder>>(new Map());
   const [excluded, setExcluded] = useState<Map<number, SyncFolderExclusion>>(new Map());
+  const [treatArchivedAsDeleted, setTreatArchivedAsDeleted] = useState(false);
   const [parentById, setParentById] = useState<Map<number, number>>(new Map());
   const [expandedSharePoint, setExpandedSharePoint] = useState<Set<string>>(new Set());
   const [expandedShufflrr, setExpandedShufflrr] = useState<Set<number>>(new Set());
@@ -363,6 +366,7 @@ export function SyncAgent({ active }: { active: boolean }) {
     destinationFolderName: config.destinationFolderName,
     sourceFolders: config.sourceFolders,
     excludedFolders: config.excludedFolders,
+    treatArchivedAsDeleted: config.treatArchivedAsDeleted ?? false,
   } : null);
 
   useEffect(() => {
@@ -372,6 +376,7 @@ export function SyncAgent({ active }: { active: boolean }) {
       : null);
     setSelected(new Map(config.sourceFolders.map(folder => [folder.id, folder])));
     setExcluded(new Map((config.excludedFolders ?? []).map(folder => [folder.id, folder])));
+    setTreatArchivedAsDeleted(config.treatArchivedAsDeleted ?? false);
   }, [savedFolderSettings]); // Status refreshes must not discard unsaved folder selections.
 
   const refreshMutation = useMutation({
@@ -625,6 +630,7 @@ export function SyncAgent({ active }: { active: boolean }) {
                   destinationFolderId: destination.id,
                   destinationFolderName: destination.name,
                   sourceFolders: [...selected.values()],
+                  treatArchivedAsDeleted,
                 excludedFolders: [...excluded.values()].map(folder => ({
                   ...folder, ancestorIds: currentExclusionAncestors(folder, parentById),
                 })),
@@ -642,6 +648,29 @@ export function SyncAgent({ active }: { active: boolean }) {
           <div className="shrink-0 border-b px-4 py-2 text-xs text-muted-foreground">
             {config?.ignoredFileCount ?? 0} active file ignore rule{config?.ignoredFileCount === 1 ? "" : "s"} ·{" "}
             <button type="button" className="font-medium underline" onClick={reviewIgnored}>Review ignored files</button>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 border-b px-4 py-3 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={treatArchivedAsDeleted} disabled={foldersLocked || saveMutation.isPending}
+                onChange={event => setTreatArchivedAsDeleted(event.target.checked)} data-testid="toggle-treat-archived-as-deleted" />
+              Treat archived files as deleted
+            </label>
+            <TooltipProvider delayDuration={250}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" aria-label="Archived-file policy information" data-testid="button-archive-policy-info"
+                    className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <Info className="size-4" aria-hidden="true" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="start" className="max-w-sm whitespace-normal text-left leading-relaxed">
+                  On the next full sync, remove verified sync-managed SharePoint copies of archived Shufflrr files.
+                  Ignored, excluded and unrelated SharePoint content is kept. Unarchiving allows the file to sync again.
+                  Pause sync to change this setting, then save settings. Update all sync workers before enabling it;
+                  older workers do not understand archive exclusions.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
       <div className={`flex min-h-0 flex-1 flex-col gap-3 p-3 ${foldersLocked ? "opacity-70" : ""}`}>
         <section className="flex min-h-[14rem] min-w-0 flex-1 basis-0 flex-col md:min-h-0 rounded-lg border bg-card">

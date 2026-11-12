@@ -19,6 +19,7 @@ export interface Entry {
   id: number;
   name: string;
   isFolder: boolean;
+  isArchived?: boolean;
   userPermissions?: string | number;
   size?: number;
   modifiedAt?: string;
@@ -67,13 +68,17 @@ export function parseEntries(value: unknown, foldersOnly = false): Entry[] {
       (item.userPermissions != null && typeof item.userPermissions !== "string" &&
         !(typeof item.userPermissions === "number" && Number.isSafeInteger(item.userPermissions))) ||
       (item.size != null && (typeof item.size !== "number" || !Number.isSafeInteger(item.size) || item.size < 0)) ||
-      (item.modifiedDate != null && typeof item.modifiedDate !== "string")
+      (item.modifiedDate != null && typeof item.modifiedDate !== "string") ||
+      (item.storageStatus != null && typeof item.storageStatus !== "string")
     ) throw new ShufflrrError("schema", "Unexpected API response: invalid folder/file record. Check the portal's API schema.");
     const key = `${item.isFolder}:${item.id}`;
     if (keys.has(key)) throw new ShufflrrError("schema", "API returned duplicate folder/file records.");
     keys.add(key);
     return {
       id: item.id, name: item.name, isFolder: item.isFolder,
+      // Verified against the portal's archived-file API response. Never infer
+      // archive state from names, icons, dates, or absence from a cache.
+      ...(typeof item.storageStatus === "string" ? { isArchived: item.storageStatus === "MovedToGlacier" } : {}),
       ...(typeof item.fileHistoryId === "number" && Number.isSafeInteger(item.fileHistoryId) && item.fileHistoryId > 0
         ? { fileHistoryId: item.fileHistoryId } : {}),
       ...(item.userPermissions == null ? {} : { userPermissions: item.userPermissions as string | number }),

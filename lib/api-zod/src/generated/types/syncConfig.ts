@@ -14,6 +14,7 @@ import type { SyncSourceFolder } from './syncSourceFolder';
 import type { SyncSummary } from './syncSummary';
 
 export interface SyncConfig {
+  treatArchivedAsDeleted?: boolean;
   configured: boolean;
   /** @minimum 0 */
   ignoredFileCount?: number;

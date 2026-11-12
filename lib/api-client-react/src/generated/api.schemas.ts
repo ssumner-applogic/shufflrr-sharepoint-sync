@@ -51,6 +51,8 @@ export interface SyncFileProgress {
 }
 
 export interface SyncSummary {
+  /** @minimum 0 */
+  archivedFiles?: number;
   runKind?: SyncSummaryRunKind;
   /** @minimum 0 */
   createdFolders: number;
@@ -261,6 +263,10 @@ export interface SyncInventoryTotals {
   /** @minimum 0 */
   ignoredFiles?: number;
   /** @minimum 0 */
+  archivedFiles?: number;
+  /** @minimum 0 */
+  archivedBytes?: number;
+  /** @minimum 0 */
   ignoredBytes?: number;
 }
 
@@ -296,6 +302,7 @@ export const SyncConfigLastRunStatus = {
 } as const;
 
 export interface SyncConfig {
+  treatArchivedAsDeleted?: boolean;
   configured: boolean;
   /** @minimum 0 */
   ignoredFileCount?: number;
@@ -335,6 +342,7 @@ export const SyncConfigInputPollIntervalSeconds = {
 } as const;
 
 export interface SyncConfigInput {
+  treatArchivedAsDeleted?: boolean;
   pollIntervalSeconds?: SyncConfigInputPollIntervalSeconds;
   /**
      * @minLength 1
@@ -376,6 +384,7 @@ export interface SyncEnabledInput {
 }
 
 export interface ShufflrrItem {
+  isArchived?: boolean;
   id: number;
   name: string;
   isFolder: boolean;

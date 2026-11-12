@@ -73,6 +73,7 @@ export async function readShufflrr<T>(auth: AppSession, operation: (client: Shuf
 export function shufflrrItem(entry: Entry) {
   return {
     id: entry.id, name: entry.name, isFolder: entry.isFolder,
+    ...(entry.isArchived === undefined ? {} : { isArchived: entry.isArchived }),
     size: entry.size ?? 0, modifiedAt: entry.modifiedAt ?? "",
     permissions: entry.userPermissions === undefined ? "Not reported" : String(entry.userPermissions),
   };

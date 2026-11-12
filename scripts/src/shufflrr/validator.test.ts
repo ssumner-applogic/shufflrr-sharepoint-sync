@@ -41,6 +41,13 @@ test("validates the folder/file schema rather than silently treating errors as e
   assert.throws(() => parseEntries([file(1)], true), ShufflrrError);
 });
 
+test("preserves verified Shufflrr archive metadata without inferring state from file names", () => {
+  assert.equal(parseEntries([{ ...file(2), storageStatus: "MovedToGlacier" }])[0].isArchived, true);
+  assert.equal(parseEntries([{ ...file(2), name: "Archived.png", storageStatus: "Normal" }])[0].isArchived, false);
+  assert.equal(parseEntries([file(2)])[0].isArchived, undefined);
+  assert.throws(() => parseEntries([{ ...file(2), storageStatus: true }]), ShufflrrError);
+});
+
 test("sends the documented login payload and reuses path-scoped cookies", async () => {
   const seen: string[] = [];
   const client = new ShufflrrClient({ baseUrl, timeoutMs: 1000, transport: transport((url, init) => {

@@ -67,6 +67,7 @@ router.use("/sync", syncResolutionRoutes(operationError));
 function emptyConfig() {
   return {
     configured: false,
+    treatArchivedAsDeleted: false,
     destinationFolderId: null,
     destinationFolderName: null,
     sourceFolders: [],
@@ -107,6 +108,7 @@ async function responseConfig() {
     destinationFolderName: config.destinationFolderName,
     sourceFolders: config.sourceFolders,
     excludedFolders: config.excludedFolders,
+    treatArchivedAsDeleted: config.treatArchivedAsDeleted,
     enabled: config.enabled,
     pollIntervalSeconds: config.pollIntervalSeconds,
     nextRunAt: config.nextRunAt,
@@ -238,7 +240,7 @@ router.put("/sync/config", async (req, res): Promise<void> => {
     }
 
     const shufflrr = newShufflrrClient();
-    const [storedScope] = await db.select({ excludedFolders: syncConfigTable.excludedFolders })
+    const [storedScope] = await db.select({ excludedFolders: syncConfigTable.excludedFolders, treatArchivedAsDeleted: syncConfigTable.treatArchivedAsDeleted })
       .from(syncConfigTable).where(eq(syncConfigTable.id, 1)).limit(1);
     let sourceFolders: SyncSourceFolder[];
     let excludedFolders: SyncFolderExclusion[];
@@ -260,6 +262,7 @@ router.put("/sync/config", async (req, res): Promise<void> => {
       destinationFolderName: destination.name || "Shared Documents",
       sourceFolders,
       excludedFolders,
+      treatArchivedAsDeleted: parsed.data.treatArchivedAsDeleted ?? storedScope?.treatArchivedAsDeleted ?? false,
       pollIntervalSeconds: parsed.data.pollIntervalSeconds ?? 60,
     };
     await db.transaction(async tx => {
@@ -268,6 +271,9 @@ router.put("/sync/config", async (req, res): Promise<void> => {
       if (!locked) throw new AccessError("SyncRunning", "Wait for the current sync run to finish before changing its folders.", 409);
 
       const [current] = await tx.select().from(syncConfigTable).where(eq(syncConfigTable.id, 1)).limit(1);
+      // Older callers omit this preference. Preserve the locked configuration,
+      // not the earlier validation snapshot, if another save happened meanwhile.
+      input.treatArchivedAsDeleted = parsed.data.treatArchivedAsDeleted ?? current?.treatArchivedAsDeleted ?? false;
       if (current?.enabled) {
         throw new AccessError("SyncEnabled", "Pause sync before changing its folders.", 409);
       }

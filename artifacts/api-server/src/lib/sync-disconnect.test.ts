@@ -31,6 +31,7 @@ function fixture(options: {
   locked?: boolean; enabled?: boolean; running?: boolean; absent?: boolean; failNotice?: boolean;
 } = {}) {
   let config: SyncConfig | undefined = options.absent ? undefined : {
+    treatArchivedAsDeleted: false,
     id: 1, enabled: options.enabled ?? false,
     destinationFolderId: "previous-target", destinationFolderName: "Original target",
     sourceFolders: [{ id: 10, name: "Root A" }, { id: 20, name: "Root B" }, { id: 30, name: "Never copied" }],

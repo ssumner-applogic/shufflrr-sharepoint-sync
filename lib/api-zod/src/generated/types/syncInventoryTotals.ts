@@ -27,5 +27,9 @@ export interface SyncInventoryTotals {
   /** @minimum 0 */
   ignoredFiles?: number;
   /** @minimum 0 */
+  archivedFiles?: number;
+  /** @minimum 0 */
+  archivedBytes?: number;
+  /** @minimum 0 */
   ignoredBytes?: number;
 }

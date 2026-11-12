@@ -9,6 +9,8 @@ import type { SyncFileProgress } from './syncFileProgress';
 import type { SyncSummaryRunKind } from './syncSummaryRunKind';
 
 export interface SyncSummary {
+  /** @minimum 0 */
+  archivedFiles?: number;
   runKind?: SyncSummaryRunKind;
   /** @minimum 0 */
   createdFolders: number;
