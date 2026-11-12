@@ -35,6 +35,7 @@ import {
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SyncActivityLog } from "./SyncActivityLog";
+import { SyncMetadataActivity } from "./SyncMetadataActivity";
 import { SyncDashboard } from "./SyncDashboard";
 import { SyncDisconnectControl } from "./SyncDisconnectControl";
 import { SyncIgnoredFiles } from "./SyncIgnoredFiles";
@@ -592,6 +593,7 @@ export function SyncAgent({ active }: { active: boolean }) {
       {config && <SyncIgnoredFiles active={active} open={ignoredOpen} setOpen={setIgnoredOpen} running={config.lastRunStatus === "running"} />}
       {config && <SyncActivityLog config={config} active={active}
         retryQueuedAt={retryQueuedAt} onRetrySelected={() => setRetryQueuedAt(null)} />}
+      {config && <SyncMetadataActivity active={active} />}
       {config?.enabled && <p className="text-xs text-muted-foreground">Pause sync before changing its folders.</p>}
       {!config?.enabled && config?.lastRunStatus === "running" &&
         <p className="text-xs text-muted-foreground" role="status">Pause saved. Active work will finish safely before stopping; folder settings stay locked until it finishes.</p>}

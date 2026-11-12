@@ -28,7 +28,10 @@ import type {
   AccessReport,
   ConnectionStatus,
   DismissAllSyncFailures200,
+  FileMetadataRecord,
   FolderListing,
+  GetFileMetadataParams,
+  GetMetadataEventsParams,
   GetSyncFailureSharePointLink200,
   GetSyncFailures200,
   GetSyncFailuresParams,
@@ -37,6 +40,9 @@ import type {
   LibraryItem,
   ListItemsParams,
   ListShufflrrItemsParams,
+  MetadataEventPage,
+  MetadataStatus,
+  RequestMetadataRefresh202,
   RetryAllSyncFiles202,
   RetrySyncFile202,
   SharePointCreateFolderInput,
@@ -83,6 +89,397 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetMetadataStatusUrl = () => {
+
+
+
+
+  return `/api/sync/metadata/status`
+}
+
+/**
+ * @summary Independent metadata worker status and recent runs
+ */
+export const getMetadataStatus = async ( options?: Parameters<typeof customFetch>[1]): Promise<MetadataStatus> => {
+
+  return customFetch<MetadataStatus>(getGetMetadataStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMetadataStatusQueryKey = () => {
+    return [
+    `/api/sync/metadata/status`
+    ] as const;
+    }
+
+
+export const getGetMetadataStatusQueryOptions = <TData = Awaited<ReturnType<typeof getMetadataStatus>>, TError = ErrorType<ShufflrrErrorResponse>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMetadataStatus>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMetadataStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMetadataStatus>>> = ({ signal }) => getMetadataStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMetadataStatus>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetMetadataStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getMetadataStatus>>>
+export type GetMetadataStatusQueryError = ErrorType<ShufflrrErrorResponse>
+
+
+export function useGetMetadataStatus<TData = Awaited<ReturnType<typeof getMetadataStatus>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMetadataStatus>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getMetadataStatus>>,
+          TError,
+          Awaited<ReturnType<typeof getMetadataStatus>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetMetadataStatus<TData = Awaited<ReturnType<typeof getMetadataStatus>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMetadataStatus>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getMetadataStatus>>,
+          TError,
+          Awaited<ReturnType<typeof getMetadataStatus>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetMetadataStatus<TData = Awaited<ReturnType<typeof getMetadataStatus>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMetadataStatus>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Independent metadata worker status and recent runs
+ */
+
+export function useGetMetadataStatus<TData = Awaited<ReturnType<typeof getMetadataStatus>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMetadataStatus>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetMetadataStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRequestMetadataRefreshUrl = () => {
+
+
+
+
+  return `/api/sync/metadata/refresh`
+}
+
+/**
+ * @summary Coalesce a metadata-only refresh request without transferring files
+ */
+export const requestMetadataRefresh = async ( options?: Parameters<typeof customFetch>[1]): Promise<RequestMetadataRefresh202> => {
+
+  return customFetch<RequestMetadataRefresh202>(getRequestMetadataRefreshUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRequestMetadataRefreshMutationKey = () => ['requestMetadataRefresh'] as const;
+
+export const getRequestMetadataRefreshMutationOptions = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestMetadataRefresh>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestMetadataRefresh>>, TError,void, TContext> => {
+
+const mutationKey = getRequestMetadataRefreshMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestMetadataRefresh>>, void> = () => {
+
+
+          return  requestMetadataRefresh(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestMetadataRefreshMutationResult = NonNullable<Awaited<ReturnType<typeof requestMetadataRefresh>>>
+
+    export type RequestMetadataRefreshMutationError = ErrorType<ShufflrrErrorResponse>
+
+
+    /**
+ * @summary Coalesce a metadata-only refresh request without transferring files
+ */
+export const useRequestMetadataRefresh = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestMetadataRefresh>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof requestMetadataRefresh>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRequestMetadataRefreshMutationOptions(options), queryClient);
+    }
+
+export const getGetMetadataEventsUrl = (params: GetMetadataEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/sync/metadata/events?${stringifiedParams}` : `/api/sync/metadata/events`
+}
+
+/**
+ * @summary Read a fixed metadata run independently of file activity
+ */
+export const getMetadataEvents = async (params: GetMetadataEventsParams, options?: Parameters<typeof customFetch>[1]): Promise<MetadataEventPage> => {
+
+  return customFetch<MetadataEventPage>(getGetMetadataEventsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMetadataEventsQueryKey = (params?: GetMetadataEventsParams,) => {
+    return [
+    `/api/sync/metadata/events`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMetadataEventsQueryOptions = <TData = Awaited<ReturnType<typeof getMetadataEvents>>, TError = ErrorType<ShufflrrErrorResponse>>(params: GetMetadataEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMetadataEvents>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMetadataEventsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMetadataEvents>>> = ({ signal }) => getMetadataEvents(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMetadataEvents>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetMetadataEventsQueryResult = NonNullable<Awaited<ReturnType<typeof getMetadataEvents>>>
+export type GetMetadataEventsQueryError = ErrorType<ShufflrrErrorResponse>
+
+
+export function useGetMetadataEvents<TData = Awaited<ReturnType<typeof getMetadataEvents>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: GetMetadataEventsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMetadataEvents>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getMetadataEvents>>,
+          TError,
+          Awaited<ReturnType<typeof getMetadataEvents>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetMetadataEvents<TData = Awaited<ReturnType<typeof getMetadataEvents>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: GetMetadataEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMetadataEvents>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getMetadataEvents>>,
+          TError,
+          Awaited<ReturnType<typeof getMetadataEvents>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetMetadataEvents<TData = Awaited<ReturnType<typeof getMetadataEvents>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: GetMetadataEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMetadataEvents>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Read a fixed metadata run independently of file activity
+ */
+
+export function useGetMetadataEvents<TData = Awaited<ReturnType<typeof getMetadataEvents>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: GetMetadataEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMetadataEvents>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetMetadataEventsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetFileMetadataUrl = (params: GetFileMetadataParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/sync/metadata/file?${stringifiedParams}` : `/api/sync/metadata/file`
+}
+
+/**
+ * @summary Retrieve the source metadata associated with a SharePoint identity
+ */
+export const getFileMetadata = async (params: GetFileMetadataParams, options?: Parameters<typeof customFetch>[1]): Promise<FileMetadataRecord> => {
+
+  return customFetch<FileMetadataRecord>(getGetFileMetadataUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFileMetadataQueryKey = (params?: GetFileMetadataParams,) => {
+    return [
+    `/api/sync/metadata/file`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetFileMetadataQueryOptions = <TData = Awaited<ReturnType<typeof getFileMetadata>>, TError = ErrorType<ShufflrrErrorResponse>>(params: GetFileMetadataParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getFileMetadata>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFileMetadataQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFileMetadata>>> = ({ signal }) => getFileMetadata(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFileMetadata>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetFileMetadataQueryResult = NonNullable<Awaited<ReturnType<typeof getFileMetadata>>>
+export type GetFileMetadataQueryError = ErrorType<ShufflrrErrorResponse>
+
+
+export function useGetFileMetadata<TData = Awaited<ReturnType<typeof getFileMetadata>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: GetFileMetadataParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getFileMetadata>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getFileMetadata>>,
+          TError,
+          Awaited<ReturnType<typeof getFileMetadata>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetFileMetadata<TData = Awaited<ReturnType<typeof getFileMetadata>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: GetFileMetadataParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getFileMetadata>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getFileMetadata>>,
+          TError,
+          Awaited<ReturnType<typeof getFileMetadata>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetFileMetadata<TData = Awaited<ReturnType<typeof getFileMetadata>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: GetFileMetadataParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getFileMetadata>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Retrieve the source metadata associated with a SharePoint identity
+ */
+
+export function useGetFileMetadata<TData = Awaited<ReturnType<typeof getFileMetadata>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: GetFileMetadataParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getFileMetadata>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetFileMetadataQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetSyncRunsUrl = () => {
 

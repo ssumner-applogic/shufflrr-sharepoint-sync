@@ -9,6 +9,9 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "sync:run": "node --enable-source-maps ./dist/sync.mjs",
     "sync:watch": "node --enable-source-maps ./dist/sync-watch.mjs",
+    "metadata:watch": "node --enable-source-maps ./dist/metadata-watch.mjs",
+    "metadata:check": "node --enable-source-maps ./dist/metadata-watch.mjs --once --first-ten",
+    "test:metadata": "pnpm --filter @workspace/scripts exec tsx --test ../artifacts/api-server/src/lib/metadata.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:sync-postgres": "pnpm --filter @workspace/scripts exec tsx --test ../artifacts/api-server/src/lib/sync-scheduling.postgres.test.ts",
     "test:sync": "pnpm --filter @workspace/scripts exec tsx --test ../artifacts/api-server/src/lib/sync-protections.test.ts ../artifacts/api-server/src/lib/sync-transfer.test.ts ../artifacts/api-server/src/lib/sync-inventory.test.ts ../artifacts/api-server/src/lib/sync-file-progress.test.ts ../artifacts/api-server/src/lib/sync-disconnect.test.ts ../artifacts/api-server/src/lib/sync-scheduling.test.ts ../artifacts/api-server/src/lib/sync-retry-queue.test.ts"

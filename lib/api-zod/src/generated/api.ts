@@ -9,6 +9,120 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Independent metadata worker status and recent runs
+ */
+export const GetMetadataStatusResponse = zod.object({
+  "configured": zod.boolean(),
+  "pending": zod.boolean(),
+  "workerLastSeenAt": zod.coerce.date().nullable(),
+  "nextCrawlAt": zod.coerce.date().nullable(),
+  "intervalSeconds": zod.number().int(),
+  "runs": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "status": zod.enum(['running', 'success', 'partial', 'failed']),
+  "startedAt": zod.coerce.date(),
+  "finishedAt": zod.coerce.date().nullable(),
+  "totalFiles": zod.number().int(),
+  "processedFiles": zod.number().int(),
+  "refreshedFiles": zod.number().int(),
+  "unchangedFiles": zod.number().int(),
+  "failedFiles": zod.number().int(),
+  "skippedFiles": zod.number().int(),
+  "sampleLimit": zod.number().int().nullable(),
+  "error": zod.string().nullable()
+}))
+})
+
+
+/**
+ * @summary Coalesce a metadata-only refresh request without transferring files
+ */
+export const RequestMetadataRefreshResponse = zod.object({
+  "requestedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Read a fixed metadata run independently of file activity
+ */
+export const getMetadataEventsQueryAfterMin = 0;
+
+export const getMetadataEventsQueryLimitDefault = 50;
+export const getMetadataEventsQueryLimitMax = 100;
+
+
+
+export const GetMetadataEventsQueryParams = zod.object({
+  "runId": zod.coerce.string().uuid(),
+  "after": zod.coerce.number().int().min(getMetadataEventsQueryAfterMin).optional(),
+  "limit": zod.coerce.number().int().min(1).max(getMetadataEventsQueryLimitMax).default(getMetadataEventsQueryLimitDefault)
+})
+
+export const GetMetadataEventsResponse = zod.object({
+  "events": zod.array(zod.object({
+  "id": zod.number().int(),
+  "runId": zod.string().uuid(),
+  "driveId": zod.string(),
+  "itemId": zod.string(),
+  "name": zod.string(),
+  "status": zod.enum(['refreshed', 'unchanged', 'failed', 'skipped']),
+  "message": zod.string(),
+  "occurredAt": zod.coerce.date()
+})),
+  "nextAfter": zod.number().int().nullable()
+})
+
+
+/**
+ * @summary Retrieve the source metadata associated with a SharePoint identity
+ */
+export const getFileMetadataQueryDriveIdMax = 500;
+
+export const getFileMetadataQueryItemIdMax = 500;
+
+
+
+export const GetFileMetadataQueryParams = zod.object({
+  "driveId": zod.coerce.string().min(1).max(getFileMetadataQueryDriveIdMax),
+  "itemId": zod.coerce.string().min(1).max(getFileMetadataQueryItemIdMax)
+})
+
+export const GetFileMetadataResponse = zod.object({
+  "driveId": zod.string(),
+  "itemId": zod.string(),
+  "sourceFileId": zod.number().int(),
+  "fields": zod.union([zod.object({
+  "id": zod.number().int(),
+  "portalId": zod.number().int().nullish(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "parentFolderId": zod.number().int().nullish(),
+  "folderName": zod.string().nullish(),
+  "fileType": zod.string().nullish(),
+  "extension": zod.string().nullish(),
+  "author": zod.string().nullish(),
+  "size": zod.number().int().nullish(),
+  "source": zod.string().nullish(),
+  "sourceId": zod.string().nullish(),
+  "createdDate": zod.string().nullish(),
+  "modifiedDate": zod.string().nullish(),
+  "createdById": zod.string().nullish(),
+  "createdByName": zod.string().nullish(),
+  "createdByEmail": zod.string().nullish(),
+  "modifiedById": zod.string().nullish(),
+  "modifiedByName": zod.string().nullish(),
+  "fileCreatedDate": zod.string().nullish(),
+  "fileModifiedDate": zod.string().nullish()
+}),zod.null()]),
+  "observedAt": zod.coerce.date().nullable(),
+  "lastAttemptAt": zod.coerce.date(),
+  "lastError": zod.string().nullable(),
+  "stale": zod.boolean(),
+  "mapped": zod.boolean()
+})
+
+
+/**
  * @summary Read the most recent fifty sync runs
  */
 export const getSyncRunsResponseSummaryOneArchivedFilesMin = 0;

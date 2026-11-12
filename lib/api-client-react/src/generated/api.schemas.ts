@@ -5,6 +5,129 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface SourceMetadata {
+  id: number;
+  /** @nullable */
+  portalId?: number | null;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  parentFolderId?: number | null;
+  /** @nullable */
+  folderName?: string | null;
+  /** @nullable */
+  fileType?: string | null;
+  /** @nullable */
+  extension?: string | null;
+  /** @nullable */
+  author?: string | null;
+  /** @nullable */
+  size?: number | null;
+  /** @nullable */
+  source?: string | null;
+  /** @nullable */
+  sourceId?: string | null;
+  /** @nullable */
+  createdDate?: string | null;
+  /** @nullable */
+  modifiedDate?: string | null;
+  /** @nullable */
+  createdById?: string | null;
+  /** @nullable */
+  createdByName?: string | null;
+  /** @nullable */
+  createdByEmail?: string | null;
+  /** @nullable */
+  modifiedById?: string | null;
+  /** @nullable */
+  modifiedByName?: string | null;
+  /** @nullable */
+  fileCreatedDate?: string | null;
+  /** @nullable */
+  fileModifiedDate?: string | null;
+}
+
+export interface FileMetadataRecord {
+  driveId: string;
+  itemId: string;
+  sourceFileId: number;
+  fields: SourceMetadata | null;
+  /** @nullable */
+  observedAt: string | null;
+  lastAttemptAt: string;
+  /** @nullable */
+  lastError: string | null;
+  stale: boolean;
+  mapped: boolean;
+}
+
+export type MetadataRunStatus = typeof MetadataRunStatus[keyof typeof MetadataRunStatus];
+
+
+export const MetadataRunStatus = {
+  running: 'running',
+  success: 'success',
+  partial: 'partial',
+  failed: 'failed',
+} as const;
+
+export interface MetadataRun {
+  id: string;
+  status: MetadataRunStatus;
+  startedAt: string;
+  /** @nullable */
+  finishedAt: string | null;
+  totalFiles: number;
+  processedFiles: number;
+  refreshedFiles: number;
+  unchangedFiles: number;
+  failedFiles: number;
+  skippedFiles: number;
+  /** @nullable */
+  sampleLimit: number | null;
+  /** @nullable */
+  error: string | null;
+}
+
+export interface MetadataStatus {
+  configured: boolean;
+  pending: boolean;
+  /** @nullable */
+  workerLastSeenAt: string | null;
+  /** @nullable */
+  nextCrawlAt: string | null;
+  intervalSeconds: number;
+  runs: MetadataRun[];
+}
+
+export type MetadataEventStatus = typeof MetadataEventStatus[keyof typeof MetadataEventStatus];
+
+
+export const MetadataEventStatus = {
+  refreshed: 'refreshed',
+  unchanged: 'unchanged',
+  failed: 'failed',
+  skipped: 'skipped',
+} as const;
+
+export interface MetadataEvent {
+  id: number;
+  runId: string;
+  driveId: string;
+  itemId: string;
+  name: string;
+  status: MetadataEventStatus;
+  message: string;
+  occurredAt: string;
+}
+
+export interface MetadataEventPage {
+  events: MetadataEvent[];
+  /** @nullable */
+  nextAfter: number | null;
+}
+
 export interface ShufflrrRequestError {
   error: string;
   requestId: string;
@@ -495,6 +618,36 @@ export interface HealthStatus {
  * Safe request or provider failure
  */
 export type ShufflrrErrorResponse = ShufflrrRequestError;
+
+export type RequestMetadataRefresh202 = {
+  requestedAt: string;
+};
+
+export type GetMetadataEventsParams = {
+runId: string;
+/**
+ * @minimum 0
+ */
+after?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type GetFileMetadataParams = {
+/**
+ * @minLength 1
+ * @maxLength 500
+ */
+driveId: string;
+/**
+ * @minLength 1
+ * @maxLength 500
+ */
+itemId: string;
+};
 
 export type GetSyncRunEventsParams = {
 runId: string;

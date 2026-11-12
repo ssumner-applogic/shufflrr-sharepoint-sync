@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { CookieJar } from "tough-cookie";
 import { ProviderBackoffError, ProviderGate, requestSpacing } from "./http-policy";
+import { parseFileMetadata } from "./metadata";
+export { metadataFields, parseFileMetadata, type FileMetadata } from "./metadata";
 
 const requestGate = new ProviderGate("Shufflrr", requestSpacing(process.env.SHUFFLRR_REQUEST_INTERVAL_MS));
 
@@ -211,6 +213,13 @@ export class ShufflrrClient {
   async file(id: number): Promise<Entry> {
     this.requireSession();
     return parseEntries([await this.request(`/files/${id}`, "/files/{id}")])[0];
+  }
+  async fileMetadata(id: number) {
+    this.requireSession();
+    if (!Number.isSafeInteger(id) || id < 1) throw new ShufflrrError("schema", "Invalid file ID.");
+    const response = await this.request(`/files/${id}`, "/files/{id}");
+    try { return parseFileMetadata(response, id); }
+    catch { throw new ShufflrrError("schema", "Shufflrr returned invalid file metadata."); }
   }
   async download(id: number): Promise<Response> {
     this.requireSession();

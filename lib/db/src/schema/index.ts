@@ -21,4 +21,5 @@ export * from "./sync-failure-issues";
 //   export type Post = typeof postsTable.$inferSelect;
 
 export * from "./sync";
+export * from "./file-metadata";
 export * from "./sync-log";

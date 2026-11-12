@@ -35,6 +35,7 @@ import { disconnectSyncFolders, requestSyncNow, setSyncEnabledState } from "../l
 import { syncInventoryScopeKey } from "../lib/sync-inventory";
 import { syncResolutionRoutes } from "./sync-resolutions";
 import { fileInRuleScope } from "../lib/sync-file-rules";
+import { metadataRoutes } from "./metadata";
 
 const router: IRouter = Router();
 
@@ -62,6 +63,7 @@ router.use("/sync", (req, res, next) => {
 });
 
 router.use("/sync/failures", syncFailureRoutes(operationError));
+router.use("/sync/metadata", metadataRoutes());
 router.use("/sync", syncResolutionRoutes(operationError));
 
 function emptyConfig() {

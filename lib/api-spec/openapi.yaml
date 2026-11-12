@@ -11,6 +11,70 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /sync/metadata/status:
+    get:
+      operationId: getMetadataStatus
+      summary: Independent metadata worker status and recent runs
+      responses:
+        "200":
+          description: Metadata status for the current scope
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetadataStatus" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
+  /sync/metadata/refresh:
+    post:
+      operationId: requestMetadataRefresh
+      summary: Coalesce a metadata-only refresh request without transferring files
+      responses:
+        "202":
+          description: Refresh requested
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requestedAt]
+                properties:
+                  requestedAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
+  /sync/metadata/events:
+    get:
+      operationId: getMetadataEvents
+      summary: Read a fixed metadata run independently of file activity
+      parameters:
+        - { in: query, name: runId, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: after, schema: { type: integer, minimum: 0 } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        "200":
+          description: Metadata event page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetadataEventPage" }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "404": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
+  /sync/metadata/file:
+    get:
+      operationId: getFileMetadata
+      summary: Retrieve the source metadata associated with a SharePoint identity
+      parameters:
+        - { in: query, name: driveId, required: true, schema: { type: string, minLength: 1, maxLength: 500 } }
+        - { in: query, name: itemId, required: true, schema: { type: string, minLength: 1, maxLength: 500 } }
+      responses:
+        "200":
+          description: Last good snapshot and its refresh state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileMetadataRecord" }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "404": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
   /sync/runs:
     get:
       operationId: getSyncRuns
@@ -521,6 +585,92 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ShufflrrRequestError" }
   schemas:
+    SourceMetadata:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: { type: integer }
+        portalId: { type: ["integer", "null"] }
+        name: { type: string }
+        description: { type: ["string", "null"] }
+        parentFolderId: { type: ["integer", "null"] }
+        folderName: { type: ["string", "null"] }
+        fileType: { type: ["string", "null"] }
+        extension: { type: ["string", "null"] }
+        author: { type: ["string", "null"] }
+        size: { type: ["integer", "null"] }
+        source: { type: ["string", "null"] }
+        sourceId: { type: ["string", "null"] }
+        createdDate: { type: ["string", "null"] }
+        modifiedDate: { type: ["string", "null"] }
+        createdById: { type: ["string", "null"] }
+        createdByName: { type: ["string", "null"] }
+        createdByEmail: { type: ["string", "null"] }
+        modifiedById: { type: ["string", "null"] }
+        modifiedByName: { type: ["string", "null"] }
+        fileCreatedDate: { type: ["string", "null"] }
+        fileModifiedDate: { type: ["string", "null"] }
+    FileMetadataRecord:
+      type: object
+      required: [driveId, itemId, sourceFileId, fields, observedAt, lastAttemptAt, lastError, stale, mapped]
+      properties:
+        driveId: { type: string }
+        itemId: { type: string }
+        sourceFileId: { type: integer }
+        fields:
+          oneOf:
+            - { $ref: "#/components/schemas/SourceMetadata" }
+            - { type: "null" }
+        observedAt: { type: ["string", "null"], format: date-time }
+        lastAttemptAt: { type: string, format: date-time }
+        lastError: { type: ["string", "null"] }
+        stale: { type: boolean }
+        mapped: { type: boolean }
+    MetadataRun:
+      type: object
+      required: [id, status, startedAt, finishedAt, totalFiles, processedFiles, refreshedFiles, unchangedFiles, failedFiles, skippedFiles, sampleLimit, error]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [running, success, partial, failed] }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: ["string", "null"], format: date-time }
+        totalFiles: { type: integer }
+        processedFiles: { type: integer }
+        refreshedFiles: { type: integer }
+        unchangedFiles: { type: integer }
+        failedFiles: { type: integer }
+        skippedFiles: { type: integer }
+        sampleLimit: { type: ["integer", "null"] }
+        error: { type: ["string", "null"] }
+    MetadataStatus:
+      type: object
+      required: [configured, pending, workerLastSeenAt, nextCrawlAt, intervalSeconds, runs]
+      properties:
+        configured: { type: boolean }
+        pending: { type: boolean }
+        workerLastSeenAt: { type: ["string", "null"], format: date-time }
+        nextCrawlAt: { type: ["string", "null"], format: date-time }
+        intervalSeconds: { type: integer }
+        runs: { type: array, items: { $ref: "#/components/schemas/MetadataRun" } }
+    MetadataEvent:
+      type: object
+      required: [id, runId, driveId, itemId, name, status, message, occurredAt]
+      properties:
+        id: { type: integer }
+        runId: { type: string, format: uuid }
+        driveId: { type: string }
+        itemId: { type: string }
+        name: { type: string }
+        status: { type: string, enum: [refreshed, unchanged, failed, skipped] }
+        message: { type: string }
+        occurredAt: { type: string, format: date-time }
+    MetadataEventPage:
+      type: object
+      required: [events, nextAfter]
+      properties:
+        events: { type: array, items: { $ref: "#/components/schemas/MetadataEvent" } }
+        nextAfter: { type: ["integer", "null"] }
     ShufflrrRequestError:
       type: object
       required: [error, requestId]
