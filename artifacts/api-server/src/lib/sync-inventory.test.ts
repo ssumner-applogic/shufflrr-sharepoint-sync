@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { SyncItem, SyncRunSummary } from "@workspace/db/schema";
+import type { SyncFileRule, SyncItem, SyncRunSummary } from "@workspace/db/schema";
 import { SyncInventory, syncInventoryScopeKey } from "./sync-inventory";
 import { SyncRunJournal } from "./sync-log";
 
@@ -20,6 +20,20 @@ const mapping = (id: number, size: number): SyncItem => ({
   destinationId: `destination-${id}`, relativePath: `Source/${id}.pptx`, name: `${id}.pptx`,
   sourceSize: size, sourceModifiedAt: "source-version", destinationCTag: "destination-version",
   updatedAt: new Date(),
+});
+test("ignored files are a separate disjoint outcome with their own byte total and scope freshness", () => {
+  const rule: SyncFileRule = { id: 1, failureId: 1, sourceId: 2, sourceRootId: 1,
+    destinationRootId: "destination", destinationRootName: "Target", action: "ignore",
+    expectedDestinationId: null, expectedETag: null, createdAt: new Date() };
+  const inventory = new SyncInventory({ ...scope, fileRules: [rule] }, [source(2, 100), source(3, 200)], [], []);
+  inventory.record(1, 2, "skipped");
+  assert.equal(inventory.totals.sourceFiles, 2);
+  assert.equal(inventory.totals.ignoredFiles, 1);
+  assert.equal(inventory.totals.ignoredBytes, 100);
+  assert.equal(inventory.totals.pendingFiles, 1);
+  assert.equal(inventory.totals.failedFiles, 0);
+  assert.notEqual(syncInventoryScopeKey({ ...scope, fileRules: [rule] }), syncInventoryScopeKey(scope));
+  assert.equal(syncInventoryScopeKey({ ...scope, fileRules: [{ ...rule, destinationRootId: "other" }] }), syncInventoryScopeKey(scope));
 });
 
 test("inventory excludes folders and unrelated destinations, retaining distinct original and stored sizes", () => {

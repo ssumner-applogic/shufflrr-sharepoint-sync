@@ -50,7 +50,10 @@ import type {
   SyncDashboard,
   SyncEnabledInput,
   SyncEventPage,
+  SyncIgnoredFile,
   SyncPollingInput,
+  SyncResolutionInput,
+  SyncRuleSelection,
   SyncRun
 } from './api.schemas';
 
@@ -578,6 +581,283 @@ export const useSaveSyncConfig = <TError = ErrorType<ShufflrrErrorResponse>,
         TContext
       > => {
       return useMutation(getSaveSyncConfigMutationOptions(options), queryClient);
+    }
+
+export const getResolveSyncConflictsUrl = () => {
+
+
+
+
+  return `/api/sync/resolutions`
+}
+
+/**
+ * @summary Approve overwrite on the next sync or persistently ignore selected files
+ */
+export const resolveSyncConflicts = async (syncResolutionInput: SyncResolutionInput, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<void>(getResolveSyncConflictsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(syncResolutionInput)
+  }
+);}
+
+
+
+
+
+export const getResolveSyncConflictsMutationKey = () => ['resolveSyncConflicts'] as const;
+
+export const getResolveSyncConflictsMutationOptions = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveSyncConflicts>>, TError,ResolveSyncConflictsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resolveSyncConflicts>>, TError,ResolveSyncConflictsMutationVariables, TContext> => {
+
+const mutationKey = getResolveSyncConflictsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resolveSyncConflicts>>, ResolveSyncConflictsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  resolveSyncConflicts(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResolveSyncConflictsMutationResult = NonNullable<Awaited<ReturnType<typeof resolveSyncConflicts>>>
+    export type ResolveSyncConflictsMutationBody = BodyType<SyncResolutionInput>
+    export type ResolveSyncConflictsMutationError = ErrorType<ShufflrrErrorResponse>
+    export type ResolveSyncConflictsMutationVariables = {data: BodyType<SyncResolutionInput>}
+
+    /**
+ * @summary Approve overwrite on the next sync or persistently ignore selected files
+ */
+export const useResolveSyncConflicts = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveSyncConflicts>>, TError,ResolveSyncConflictsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof resolveSyncConflicts>>,
+        TError,
+        ResolveSyncConflictsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getResolveSyncConflictsMutationOptions(options), queryClient);
+    }
+
+export const getGetSyncIgnoredFilesUrl = () => {
+
+
+
+
+  return `/api/sync/ignored`
+}
+
+/**
+ * @summary List persistent file ignore rules, including detached mappings
+ */
+export const getSyncIgnoredFiles = async ( options?: Parameters<typeof customFetch>[1]): Promise<SyncIgnoredFile[]> => {
+
+  return customFetch<SyncIgnoredFile[]>(getGetSyncIgnoredFilesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSyncIgnoredFilesQueryKey = () => {
+    return [
+    `/api/sync/ignored`
+    ] as const;
+    }
+
+
+export const getGetSyncIgnoredFilesQueryOptions = <TData = Awaited<ReturnType<typeof getSyncIgnoredFiles>>, TError = ErrorType<ShufflrrErrorResponse>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncIgnoredFiles>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSyncIgnoredFilesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSyncIgnoredFiles>>> = ({ signal }) => getSyncIgnoredFiles({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSyncIgnoredFiles>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetSyncIgnoredFilesQueryResult = NonNullable<Awaited<ReturnType<typeof getSyncIgnoredFiles>>>
+export type GetSyncIgnoredFilesQueryError = ErrorType<ShufflrrErrorResponse>
+
+
+export function useGetSyncIgnoredFiles<TData = Awaited<ReturnType<typeof getSyncIgnoredFiles>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncIgnoredFiles>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncIgnoredFiles>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncIgnoredFiles>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncIgnoredFiles<TData = Awaited<ReturnType<typeof getSyncIgnoredFiles>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncIgnoredFiles>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSyncIgnoredFiles>>,
+          TError,
+          Awaited<ReturnType<typeof getSyncIgnoredFiles>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSyncIgnoredFiles<TData = Awaited<ReturnType<typeof getSyncIgnoredFiles>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncIgnoredFiles>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List persistent file ignore rules, including detached mappings
+ */
+
+export function useGetSyncIgnoredFiles<TData = Awaited<ReturnType<typeof getSyncIgnoredFiles>>, TError = ErrorType<ShufflrrErrorResponse>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSyncIgnoredFiles>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetSyncIgnoredFilesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getReenableSyncFilesUrl = () => {
+
+
+
+
+  return `/api/sync/ignored/reenable`
+}
+
+/**
+ * @summary Remove selected ignore rules without overwriting or starting sync
+ */
+export const reenableSyncFiles = async (syncRuleSelection: SyncRuleSelection, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<void>(getReenableSyncFilesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(syncRuleSelection)
+  }
+);}
+
+
+
+
+
+export const getReenableSyncFilesMutationKey = () => ['reenableSyncFiles'] as const;
+
+export const getReenableSyncFilesMutationOptions = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reenableSyncFiles>>, TError,ReenableSyncFilesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reenableSyncFiles>>, TError,ReenableSyncFilesMutationVariables, TContext> => {
+
+const mutationKey = getReenableSyncFilesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reenableSyncFiles>>, ReenableSyncFilesMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  reenableSyncFiles(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReenableSyncFilesMutationResult = NonNullable<Awaited<ReturnType<typeof reenableSyncFiles>>>
+    export type ReenableSyncFilesMutationBody = BodyType<SyncRuleSelection>
+    export type ReenableSyncFilesMutationError = ErrorType<ShufflrrErrorResponse>
+    export type ReenableSyncFilesMutationVariables = {data: BodyType<SyncRuleSelection>}
+
+    /**
+ * @summary Remove selected ignore rules without overwriting or starting sync
+ */
+export const useReenableSyncFiles = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reenableSyncFiles>>, TError,ReenableSyncFilesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof reenableSyncFiles>>,
+        TError,
+        ReenableSyncFilesMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReenableSyncFilesMutationOptions(options), queryClient);
     }
 
 export const getDisconnectSyncUrl = () => {

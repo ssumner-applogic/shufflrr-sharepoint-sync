@@ -1,3 +1,7 @@
+# File-resolution release
+
+Before serving this release, run the explicit additive migration `pnpm db:migrate` to create `sync_file_rules`. Deploy both the app/API and every sync worker connected to that database before enabling ignore/overwrite rules; older workers do not honor them. No new environment variables or container changes are needed. Migrations now fail safely on prolonged lock contention instead of waiting indefinitely. If a completed run still owns an old session-scoped advisory lock, have an operator confirm the holder is stale before terminating that database session; do not bypass the lock while another worker is active.
+
 # Shufflrr viewer configuration
 
 Set `SHUFFLRR_API_BASE_URL` (your portal's HTTPS URL ending in `/api`), `SHUFFLRR_API_EMAIL`, and `SHUFFLRR_API_PASSWORD` in the Railway service's production variables, or in Cloud Run environment/Secret Manager configuration. Keep email/password server-only. These Replit development values are not automatically copied to Railway. Missing Shufflrr configuration produces a safe configuration error for its viewer; health checks and other app features remain independent.

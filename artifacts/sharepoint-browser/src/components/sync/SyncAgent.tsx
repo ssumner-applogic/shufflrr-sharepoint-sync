@@ -34,6 +34,7 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@
 import { SyncActivityLog } from "./SyncActivityLog";
 import { SyncDashboard } from "./SyncDashboard";
 import { SyncDisconnectControl } from "./SyncDisconnectControl";
+import { SyncIgnoredFiles } from "./SyncIgnoredFiles";
 import { SyncFailureBanners } from "./SyncFailureBanners";
 import { currentExclusionAncestors, folderSelectionState, toggleFolderSelection } from "./folder-selection";
 
@@ -347,6 +348,12 @@ export function SyncAgent({ active }: { active: boolean }) {
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [disconnected, setDisconnected] = useState(false);
+  const [ignoredOpen, setIgnoredOpen] = useState(false);
+  const reviewIgnored = () => {
+    setIgnoredOpen(true);
+    setDrawerOpen(false);
+    requestAnimationFrame(() => document.getElementById("sync-ignored-files")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
   const pickersActive = active && drawerOpen;
   const savedFolderSettings = JSON.stringify(config ? {
     destinationFolderId: config.destinationFolderId,
@@ -555,9 +562,10 @@ export function SyncAgent({ active }: { active: boolean }) {
           Open folder configuration to save a new mapping.
         </p>
       )}
-      {config && <SyncDashboard active={active} config={config} />}
+      {config && <SyncDashboard active={active} config={config} reviewIgnored={reviewIgnored} />}
       {config && <ConfigStatus config={config} />}
       {config && <SyncFailureBanners active={active} />}
+      {config && <SyncIgnoredFiles active={active} open={ignoredOpen} setOpen={setIgnoredOpen} running={config.lastRunStatus === "running"} />}
       {config && <SyncActivityLog config={config} active={active} />}
       {config?.enabled && <p className="text-xs text-muted-foreground">Pause sync before changing its folders.</p>}
       {!config?.enabled && config?.lastRunStatus === "running" &&
@@ -611,6 +619,10 @@ export function SyncAgent({ active }: { active: boolean }) {
             </button>
           </div>
           {saveError && <p className="shrink-0 px-4 pt-3 text-sm text-destructive" role="alert">{saveError}</p>}
+          <div className="shrink-0 border-b px-4 py-2 text-xs text-muted-foreground">
+            {config?.ignoredFileCount ?? 0} active file ignore rule{config?.ignoredFileCount === 1 ? "" : "s"} ·{" "}
+            <button type="button" className="font-medium underline" onClick={reviewIgnored}>Review ignored files</button>
+          </div>
       <div className={`flex min-h-0 flex-1 flex-col gap-3 p-3 ${foldersLocked ? "opacity-70" : ""}`}>
         <section className="flex min-h-[14rem] min-w-0 flex-1 basis-0 flex-col md:min-h-0 rounded-lg border bg-card">
           <div className="shrink-0 border-b px-4 py-3">

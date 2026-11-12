@@ -21,6 +21,8 @@ import {
   type SyncEventStatus,
   type SyncFolderExclusion,
   syncFileFailuresTable,
+  syncFileRulesTable,
+  type SyncFileRule,
 } from "@workspace/db/schema";
 import { ShufflrrClient, ShufflrrError, type Entry } from "@workspace/shufflrr";
 import { newShufflrrClient, shufflrrConfig } from "./shufflrr";
@@ -32,6 +34,7 @@ import {
   uploadSyncFile,
   type SyncDriveItem,
 } from "./sharepoint";
+import { approvedOverwrite, fileRuleKey } from "./sync-file-rules";
 
 export const SYNC_LOCK_ID = 74120937;
 const MAX_SOURCE_FOLDERS = 5_000;
@@ -269,6 +272,7 @@ export async function performSync(
     sourceFolders: SyncSourceFolder[];
     excludedFolders?: SyncFolderExclusion[];
     retryTargets?: Array<{ sourceRootId: number; sourceId: number }>;
+    fileRules?: SyncFileRule[];
   },
   onPhase: (phase: SyncPhase) => void,
   providers = { loadDestinationSnapshot, createSyncFolder, updateSyncItem, uploadSyncFile, deleteSyncItem },
@@ -277,6 +281,9 @@ export async function performSync(
 ): Promise<{ summary: SyncRunSummary; conflicts: SyncConflict[]; failedFiles: number }> {
   onPhase("source_listing");
   const exclusions = config.excludedFolders ?? [];
+  const fileRules = (config.fileRules ?? []).filter(rule => rule.destinationRootId === config.destinationFolderId);
+  const ruleBySource = new Map(fileRules.map(rule => [fileRuleKey(rule.sourceRootId, rule.sourceId), rule]));
+  const ignoredKeys = new Set(fileRules.filter(rule => rule.action === "ignore").map(rule => fileRuleKey(rule.sourceRootId, rule.sourceId)));
   const rootsToScan = config.retryTargets
     ? config.sourceFolders.filter(root => config.retryTargets!.some(target => target.sourceRootId === root.id))
     : config.sourceFolders;
@@ -306,6 +313,8 @@ export async function performSync(
     eq(syncItemsTable.destinationRootId, config.destinationFolderId),
   );
   const protectedMappingIds = excludedMappingIds(existingMappings, exclusions);
+  for (const mapping of existingMappings) if (!mapping.sourceIsFolder &&
+    ignoredKeys.has(fileRuleKey(mapping.sourceRootId, mapping.sourceId))) protectedMappingIds.add(mapping.id);
   const protectedMappings = existingMappings.filter(mapping => protectedMappingIds.has(mapping.id));
   const excludedDestinationIds = new Set(protectedMappings.map(mapping => mapping.destinationId));
   const excludedPaths = new Set(excludedRecords.map(record => pathKey(record.path)));
@@ -358,7 +367,7 @@ export async function performSync(
   const sourceByPath = new Map(sourceRecords.map(record => [record.path, record]));
   const sourceFoldersById = new Map(allSourceRecords.filter(record => record.entry.isFolder)
     .map(record => [`${record.root.id}:${record.entry.id}`, record]));
-  const recordEvent = (path: string, isFolder: boolean, status: SyncEventStatus, message: string) => {
+  const recordEvent = async (path: string, isFolder: boolean, status: SyncEventStatus, message: string, intentionalIgnore = false) => {
     const record = isFolder ? undefined : sourceByPath.get(path);
     if (record && inventory) {
       const mapping = mappingBySource.get(sourceKey(String(record.root.id), String(record.entry.id), false));
@@ -373,8 +382,13 @@ export async function performSync(
       ancestorIds.unshift(Number(parent));
       parent = sourceFoldersById.get(`${record!.root.id}:${parent}`)?.parentSourceId ?? null;
     }
+    if (intentionalIgnore && record) await db.update(syncFileFailuresTable).set({
+      name: record.entry.name, path, parentId: Number(record.parentSourceId), ancestorIds,
+      fileHistoryId: record.entry.fileHistoryId ?? null,
+    }).where(and(eq(syncFileFailuresTable.destinationRootId, config.destinationFolderId),
+      eq(syncFileFailuresTable.sourceRootId, record.root.id), eq(syncFileFailuresTable.sourceId, record.entry.id)));
     return reporter.record({
-      ...(record ? { sourceFile: { id: record.entry.id, rootId: record.root.id,
+      ...(record && !intentionalIgnore ? { sourceFile: { id: record.entry.id, rootId: record.root.id,
         parentId: Number(record.parentSourceId), name: record.entry.name,
         fileHistoryId: record.entry.fileHistoryId,
         ancestorIds, modifiedAt: record.entry.modifiedAt, size: record.entry.size } } : {}),
@@ -402,6 +416,11 @@ export async function performSync(
   }
   const loggedExclusions = new Set(excludedRecords.map(record => `${record.root.id}:${record.entry.id}`));
   for (const mapping of protectedMappings) {
+    if (!mapping.sourceIsFolder && ignoredKeys.has(fileRuleKey(mapping.sourceRootId, mapping.sourceId))) {
+      if (!liveSourceKeys.has(sourceKey(mapping.sourceRootId, mapping.sourceId, false)))
+        await recordEvent(mapping.relativePath, false, "skipped", "Ignored by a persistent file rule; the retained SharePoint copy was left untouched.");
+      continue;
+    }
     if (mapping.sourceIsFolder && loggedExclusions.has(`${mapping.sourceRootId}:${mapping.sourceId}`)) continue;
     await recordEvent(mapping.relativePath, mapping.sourceIsFolder, "skipped",
       "This copy is inside an excluded subtree and is no longer synchronized. It was left unchanged.");
@@ -511,6 +530,13 @@ export async function performSync(
     const itemId = String(record.entry.id);
     const key = sourceKey(rootId, itemId, record.entry.isFolder);
     const mapping = mappingBySource.get(key);
+    const fileRule = record.entry.isFolder ? undefined : ruleBySource.get(fileRuleKey(rootId, itemId));
+    if (fileRule?.action === "ignore") {
+      const copy = destinationByPath.get(pathKey(record.path));
+      if (copy) conflictDestinationIds.add(copy.id);
+      await recordEvent(record.path, false, "skipped", "Ignored by a persistent file rule. Re-enable it from Ignored files; both copies were left untouched.", true);
+      continue;
+    }
     if (mapping) mappedDestinationIds.add(mapping.destinationId);
     if (record.parentSourceId && blockedSourceFolders.has(`${rootId}:${record.parentSourceId}`)) {
       if (record.entry.isFolder) blockedSourceFolders.add(`${rootId}:${itemId}`);
@@ -529,6 +555,21 @@ export async function performSync(
     const existingAtPath = destinationByPath.get(pathKey(record.path));
 
     if (!mapping && existingAtPath) {
+      const ownedByOther = allMappingsForDestination.some(owner => owner.destinationId === existingAtPath.id &&
+        (owner.sourceRootId !== rootId || owner.sourceId !== itemId));
+      if (!record.entry.isFolder && approvedOverwrite(fileRule, existingAtPath, ownedByOther)) {
+        const upstream = await client.download(record.entry.id);
+        if (!upstream.ok || !upstream.body) {
+          await upstream.body?.cancel().catch(() => {});
+          throw new FileTransferError("The Shufflrr source could not be downloaded. No successful overwrite was recorded.");
+        }
+        try {
+          destinationItem = { ...await providers.uploadSyncFile(parentDestinationId, record.entry.name,
+            sourceFileStream(upstream, record.entry.size), existingAtPath.id, fileRule!.expectedETag!), path: record.path };
+        } finally { await upstream.body.cancel().catch(() => {}); }
+        summary.updatedFiles++;
+        itemStatus = "updated";
+      } else {
       await recordConflict(record.path, record.entry.isFolder, "path-conflict");
       conflictDestinationIds.add(existingAtPath.id);
       if (existingAtPath.isFolder) {
@@ -538,6 +579,7 @@ export async function performSync(
       }
       if (record.entry.isFolder) blockedSourceFolders.add(`${rootId}:${itemId}`);
       continue;
+      }
     }
 
     if (mapping && destinationItem) {
@@ -655,6 +697,7 @@ export async function performSync(
       mapping.sourceSize === (record.entry.size ?? 0) && mapping.destinationCTag === (destinationItem.cTag ?? null)) {
       await recordEvent(record.path, record.entry.isFolder, itemStatus, itemStatus === "unchanged"
         ? "Already in sync; no changes needed." : transferNote ?? "SharePoint now matches the source.");
+      if (fileRule?.action === "overwrite") await db.delete(syncFileRulesTable).where(eq(syncFileRulesTable.id, fileRule.id));
       continue;
     }
     const [savedMapping] = await db.insert(syncItemsTable).values({
@@ -692,6 +735,7 @@ export async function performSync(
       },
     }).returning();
     mappingBySource.set(key, savedMapping);
+    if (fileRule?.action === "overwrite") await db.delete(syncFileRulesTable).where(eq(syncFileRulesTable.id, fileRule.id));
     await recordEvent(record.path, record.entry.isFolder, itemStatus, transferNote ?? {
       created: "Folder created in SharePoint.",
       copied: "File copied to SharePoint.",
@@ -763,20 +807,27 @@ export async function runScheduledSync(): Promise<SyncResult> {
   let pendingRetries: Array<typeof syncFileFailuresTable.$inferSelect> = [];
   let controlUpdatedAt: Date | undefined;
   try {
+    // Neon transaction pooling does not preserve backend affinity between
+    // statements. Keep the lock in a pinned transaction, not a session lock
+    // that could be stranded on a different pooled backend.
+    await lockConnection.query("BEGIN");
     const lock = await lockConnection.query<{ locked: boolean }>(
-      "SELECT pg_try_advisory_lock($1) AS locked",
+      "SELECT pg_try_advisory_xact_lock($1) AS locked",
       [SYNC_LOCK_ID],
     );
     locked = lock.rows[0]?.locked === true;
     if (!locked) return { skipped: true };
 
     const [config] = await db.select().from(syncConfigTable).where(eq(syncConfigTable.id, 1)).limit(1);
+    const fileRules = config?.destinationFolderId ? await db.select().from(syncFileRulesTable)
+      .where(eq(syncFileRulesTable.destinationRootId, config.destinationFolderId)) : [];
     controlUpdatedAt = config?.updatedAt;
     const queued = await db.select().from(syncFileFailuresTable).where(and(
       isNull(syncFileFailuresTable.resolvedAt), isNotNull(syncFileFailuresTable.retryRequestedAt),
     )).orderBy(syncFileFailuresTable.id).limit(1);
     for (const row of queued) {
       const valid = config?.destinationFolderId === row.destinationRootId &&
+        !fileRules.some(rule => rule.action === "ignore" && rule.sourceRootId === row.sourceRootId && rule.sourceId === row.sourceId) &&
         config.sourceFolders.some(folder => folder.id === row.sourceRootId) &&
         !config.excludedFolders.some(folder => folder.rootId === row.sourceRootId && row.ancestorIds.includes(folder.id));
       if (valid) {
@@ -825,6 +876,7 @@ export async function runScheduledSync(): Promise<SyncResult> {
       destinationFolderName: config.destinationFolderName,
       sourceFolders: config.sourceFolders,
       excludedFolders: config.excludedFolders,
+      fileRules,
       ...(pendingRetries.length ? { retryTargets: pendingRetries.map(row =>
         ({ sourceRootId: row.sourceRootId, sourceId: row.sourceId })) } : {}),
     }, nextPhase => { phase = nextPhase; }, undefined, journal, checkpoint);
@@ -893,9 +945,12 @@ export async function runScheduledSync(): Promise<SyncResult> {
     if (pendingRetries.length) await db.update(syncFileFailuresTable).set({ retryRequestedAt: null })
       .where(inArray(syncFileFailuresTable.id, pendingRetries.map(row => row.id))).catch(() => {});
     await client?.close().catch(() => {});
-    if (locked) {
-      await lockConnection.query("SELECT pg_advisory_unlock($1)", [SYNC_LOCK_ID]).catch(() => {});
+    try {
+      await lockConnection.query("ROLLBACK");
+      lockConnection.release();
+    } catch (error) {
+      // Never put a connection with an uncertain transaction back into the pool.
+      lockConnection.release(error instanceof Error ? error : new Error("Sync lock cleanup failed"));
     }
-    lockConnection.release();
   }
 }

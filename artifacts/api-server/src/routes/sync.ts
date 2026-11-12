@@ -19,6 +19,8 @@ import {
   syncOrphanNoticesTable,
   syncRunsTable,
   syncRunEventsTable,
+  syncFileRulesTable,
+  syncFileFailuresTable,
   type SyncSourceFolder,
   type SyncFolderExclusion,
 } from "@workspace/db/schema";
@@ -31,6 +33,8 @@ import { exclusionNoticeKey, validateFolderExclusions } from "../lib/sync-exclus
 import { syncFailureRoutes } from "./sync-failures";
 import { disconnectSyncFolders, requestSyncNow, setSyncEnabledState } from "../lib/sync-control";
 import { syncInventoryScopeKey } from "../lib/sync-inventory";
+import { syncResolutionRoutes } from "./sync-resolutions";
+import { fileInRuleScope } from "../lib/sync-file-rules";
 
 const router: IRouter = Router();
 
@@ -58,6 +62,7 @@ router.use("/sync", (req, res, next) => {
 });
 
 router.use("/sync/failures", syncFailureRoutes(operationError));
+router.use("/sync", syncResolutionRoutes(operationError));
 
 function emptyConfig() {
   return {
@@ -92,7 +97,11 @@ async function responseConfig() {
     .orderBy(syncOrphanNoticesTable.createdAt);
 
   if (!config) return GetSyncConfigResponse.parse({ ...emptyConfig(), detachedPairs });
+  const ignoredRules = await db.select({ file: syncFileFailuresTable }).from(syncFileRulesTable)
+    .innerJoin(syncFileFailuresTable, eq(syncFileFailuresTable.id, syncFileRulesTable.failureId))
+    .where(eq(syncFileRulesTable.action, "ignore"));
   const value = {
+    ignoredFileCount: ignoredRules.filter(row => fileInRuleScope(row.file, config)).length,
     configured: !!config.destinationFolderId && config.sourceFolders.length > 0,
     destinationFolderId: config.destinationFolderId,
     destinationFolderName: config.destinationFolderName,
@@ -154,7 +163,8 @@ router.get("/sync/dashboard", async (req, res): Promise<void> => {
     const configured = !!config?.destinationFolderId && !!config.sourceFolders.length;
     let inventory = null;
     if (configured && config.destinationFolderId) {
-      const scopeKey = syncInventoryScopeKey({ ...config, destinationFolderId: config.destinationFolderId });
+      const fileRules = await db.select().from(syncFileRulesTable).where(eq(syncFileRulesTable.destinationRootId, config.destinationFolderId));
+      const scopeKey = syncInventoryScopeKey({ ...config, destinationFolderId: config.destinationFolderId, fileRules });
       const [run] = await db.select({ summary: syncRunsTable.summary }).from(syncRunsTable)
         .where(sql`${syncRunsTable.summary}->'inventory'->>'scopeKey' = ${scopeKey}`)
         .orderBy(desc(syncRunsTable.startedAt)).limit(1);

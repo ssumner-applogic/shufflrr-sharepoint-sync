@@ -15,6 +15,8 @@ import type { SyncSummary } from './syncSummary';
 
 export interface SyncConfig {
   configured: boolean;
+  /** @minimum 0 */
+  ignoredFileCount?: number;
   /** @nullable */
   destinationFolderId: string | null;
   /** @nullable */

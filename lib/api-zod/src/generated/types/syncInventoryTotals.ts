@@ -24,4 +24,8 @@ export interface SyncInventoryTotals {
   pendingFiles: number;
   /** @minimum 0 */
   notSynchronizedFiles: number;
+  /** @minimum 0 */
+  ignoredFiles?: number;
+  /** @minimum 0 */
+  ignoredBytes?: number;
 }

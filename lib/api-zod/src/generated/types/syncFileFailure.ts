@@ -19,6 +19,8 @@ export interface SyncFileFailure {
   fileUrl: string;
   parentFolderUrl: string;
   canRetry: boolean;
+  canResolve?: boolean;
+  overwriteApproved?: boolean;
   /** @minimum 0 */
   issueCount: number;
   latestStatus: SyncFileFailureLatestStatus;

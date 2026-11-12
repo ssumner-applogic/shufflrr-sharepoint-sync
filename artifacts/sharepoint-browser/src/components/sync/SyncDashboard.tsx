@@ -40,7 +40,7 @@ function Totals({ inventory, stale }: { inventory: SyncInventoryTotals; stale: b
   const partial = inventory.sourceUnknownSizeFiles > 0;
   return (
     <div className={stale ? "opacity-60" : ""}>
-      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-2 lg:grid-cols-5">
         <Metric label="Shufflrr source files" value={countFormat.format(inventory.sourceFiles)} testId="text-dashboard-source-files"
           detail={`${mb(inventory.sourceBytes)}${partial ? " (known sizes only)" : ""}`} />
         <Metric label="Synchronized to SharePoint" value={countFormat.format(inventory.synchronizedFiles)} tone="ok"
@@ -51,6 +51,8 @@ function Totals({ inventory, stale }: { inventory: SyncInventoryTotals; stale: b
         <Metric label="Failed (incl. conflicts)" value={countFormat.format(inventory.failedFiles)}
           tone={inventory.failedFiles > 0 ? "bad" : undefined} testId="text-dashboard-failed-files"
           detail={`${countFormat.format(inventory.pendingFiles)} pending`} />
+        <Metric label="Ignored" value={countFormat.format(inventory.ignoredFiles ?? 0)} testId="text-dashboard-ignored-files"
+          detail={`${mb(inventory.ignoredBytes ?? 0)} excluded`} />
       </div>
       {partial && (
         <p className="mt-2 text-xs text-amber-700" data-testid="text-dashboard-partial-size">
@@ -61,7 +63,7 @@ function Totals({ inventory, stale }: { inventory: SyncInventoryTotals; stale: b
   );
 }
 
-export function SyncDashboard({ active, config }: { active: boolean; config: SyncConfig | undefined }) {
+export function SyncDashboard({ active, config, reviewIgnored }: { active: boolean; config: SyncConfig | undefined; reviewIgnored: () => void }) {
   const queryKey = useMemo(() => syncDashboardScopeKey(config), [config?.destinationFolderId, config?.sourceFolders, config?.excludedFolders]);
   const dashboard = useGetSyncDashboard({
     query: { queryKey, enabled: active && !!config, refetchInterval: active ? 5000 : false, refetchIntervalInBackground: false },
@@ -74,6 +76,9 @@ export function SyncDashboard({ active, config }: { active: boolean; config: Syn
     <section className="rounded-md border bg-card px-4 py-3" aria-labelledby="sync-dashboard-title" data-testid="sync-dashboard">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 id="sync-dashboard-title" className="text-sm font-medium">Scope totals</h3>
+        <button type="button" onClick={reviewIgnored} className="text-xs underline" data-testid="button-dashboard-review-ignored">
+          {config?.ignoredFileCount ?? 0} active ignore rule{config?.ignoredFileCount === 1 ? "" : "s"} · Review
+        </button>
         <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" data-testid="text-dashboard-scanned-at">
           {data?.running && <Loader2 className="size-3 animate-spin" aria-hidden="true" />}
           {inventory ? `Last full source scan ${new Date(inventory.scannedAt).toLocaleString()}` : data?.running ? "Scan in progress" : null}
@@ -115,7 +120,7 @@ export function SyncDashboard({ active, config }: { active: boolean; config: Syn
         <p className="mt-3 flex gap-1.5 text-xs text-muted-foreground">
           <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
           <span>
-            Files only, within the selected scope and excluding excluded folders. Totals come from the latest full-scope scan and update as its run progresses; targeted retries are reflected after the next full scan.
+            Files only, within the selected scope and excluding excluded folders. Ignored files are shown separately, not as failed, pending, or synchronized. Changing ignore rules requires a new full scan for these totals; the active rule count updates immediately. Targeted retries are reflected after the next full scan.
             SharePoint adds a small amount of metadata to Office files, so stored size can be slightly larger than the source.
           </span>
         </p>

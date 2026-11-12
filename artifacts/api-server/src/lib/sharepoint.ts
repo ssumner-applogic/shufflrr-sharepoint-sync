@@ -308,6 +308,7 @@ export interface SyncDriveItem {
   size: number;
   modifiedAt: string;
   cTag?: string;
+  eTag?: string;
   parentId?: string;
   /** Transfer-specific activity detail; never used as a size/change-detection baseline. */
   uploadNote?: string;
@@ -321,6 +322,7 @@ function syncDriveItem(item: GraphItem): SyncDriveItem {
     size: item.size ?? 0,
     modifiedAt: item.lastModifiedDateTime ?? "",
     ...(item.cTag ? { cTag: item.cTag } : {}),
+    ...(item.eTag ? { eTag: item.eTag } : {}),
     ...(item.parentReference?.id ? { parentId: item.parentReference.id } : {}),
   };
 }
@@ -332,6 +334,17 @@ export async function getSyncDriveItem(itemId: string): Promise<SyncDriveItem> {
     return syncDriveItem(await getDriveItem(driveId, rootId));
   }
   return syncDriveItem(await getDriveItem(driveId, itemId));
+}
+
+/** Resolve a conflict within the configured root, not a caller-supplied drive or URL. */
+export async function getSyncPathItem(rootId: string, relativePath: string): Promise<SyncDriveItem> {
+  const parts = relativePath.split("/");
+  if (parts.some(part => !part || part === "." || part === ".." || /[\\\u0000-\u001f]/.test(part)))
+    throw new AccessError("InvalidDestinationPath", "The destination path could not be verified.", 400);
+  const { driveId } = await location();
+  const resolvedRootId = rootId === "root" ? await getRootId(driveId) : rootId;
+  return syncDriveItem(await graph<GraphItem>(
+    `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(resolvedRootId)}:/${parts.map(encodeURIComponent).join("/")}?$select=id,name,folder,size,lastModifiedDateTime,parentReference,cTag,eTag`));
 }
 
 /** Resolve browser links only on demand, never from upload-session capability URLs. */
@@ -461,6 +474,7 @@ export async function uploadSyncFile(
   name: string,
   bytes: Uint8Array | SyncFileStream,
   existingId?: string,
+  expectedETag?: string,
 ): Promise<SyncDriveItem> {
   validateItemName(name);
   const size = bytes instanceof Uint8Array ? bytes.byteLength : bytes.size;
@@ -478,7 +492,7 @@ export async function uploadSyncFile(
         ? `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(existingId)}/createUploadSession`
         : `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(resolvedParentId)}:/${encodeURIComponent(name)}:/createUploadSession`;
       const session = await graph<{ uploadUrl: string }>(sessionPath, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", ...(expectedETag ? { "If-Match": expectedETag } : {}) },
         body: JSON.stringify({ item: { "@microsoft.graph.conflictBehavior": existingId ? "replace" : "fail", name } }),
       });
       const uploadUrl = new URL(session.uploadUrl);
@@ -530,6 +544,7 @@ export async function uploadSyncFile(
       headers: {
         "Content-Type": "application/octet-stream",
         ...(existingId ? {} : { "If-None-Match": "*" }),
+        ...(expectedETag ? { "If-Match": expectedETag } : {}),
       },
       body: new Uint8Array(0),
     });

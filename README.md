@@ -81,6 +81,14 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for Railway and Google Cloud Run setup, healt
 
 ## Continuous Shufflrr sync
 
+### Resolving file conflicts and persistent ignores
+
+File attention provides **Overwrite and sync** and **Ignore** actions per file and for selected conflicts. Overwrite requires confirmation and records approval for the current SharePoint item/version, not a successful mapping. The next run conditionally uploads the source and records ownership only after verification; a replaced destination, a folder, or a copy owned by another source is never adopted by this action. Approval alone does not start a run. **Review dismissed notices** makes previously hidden conflicts available for resolution.
+
+Ignore rules persist by source-file ID, source-root ID, and SharePoint target ID. They survive renames, reloads, and disconnects, but do not silently apply to another target. Ignored copies are protected from transfers and mirror deletions. The dashboard separates their count/size from synchronized, failed, and pending files. The **Ignored files** panel shows source/target links, creation time, active/detached scope, and single/bulk **Re-enable sync**. The folder configuration pane links to active rules. Re-enabling removes only the ignore rule and restores normal collision protection; it does not approve an overwrite or start a run.
+
+Apply additive migration `0007_sync_file_rules` with `pnpm db:migrate` before using these controls. The API and every sync worker sharing the database must run this release; older workers do not honor file rules. No new environment variables are required. Database migrations use bounded transaction-local timeouts. Sync runs hold transaction-scoped advisory locks for compatibility with Neon transaction pooling.
+
 The Sync Agent stores one shared configuration in PostgreSQL. All signed-in Clerk users can edit it. Each selected Shufflrr folder is mirrored into a same-named folder under the selected SharePoint destination. Source edits, renames, moves, and deletions are mirrored; changed SharePoint copies are overwritten from Shufflrr. Only mapped items inside the configured destination are deleted. Existing SharePoint path conflicts and SharePoint-only items are reported and left untouched.
 
 When a source folder is deselected or the destination changes, existing copies remain. The app lists the detached source/destination pairs until a user dismisses each notice; users can delete those old SharePoint copies manually if wanted. Files larger than 100 MiB are not synced.

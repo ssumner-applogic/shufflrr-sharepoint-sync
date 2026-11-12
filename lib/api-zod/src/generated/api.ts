@@ -106,6 +106,10 @@ export const getSyncDashboardResponseInventoryOnePendingFilesMin = 0;
 
 export const getSyncDashboardResponseInventoryOneNotSynchronizedFilesMin = 0;
 
+export const getSyncDashboardResponseInventoryOneIgnoredFilesMin = 0;
+
+export const getSyncDashboardResponseInventoryOneIgnoredBytesMin = 0;
+
 
 
 export const GetSyncDashboardResponse = zod.object({
@@ -120,7 +124,9 @@ export const GetSyncDashboardResponse = zod.object({
   "synchronizedBytes": zod.number().int().min(getSyncDashboardResponseInventoryOneSynchronizedBytesMin),
   "failedFiles": zod.number().int().min(getSyncDashboardResponseInventoryOneFailedFilesMin),
   "pendingFiles": zod.number().int().min(getSyncDashboardResponseInventoryOnePendingFilesMin),
-  "notSynchronizedFiles": zod.number().int().min(getSyncDashboardResponseInventoryOneNotSynchronizedFilesMin)
+  "notSynchronizedFiles": zod.number().int().min(getSyncDashboardResponseInventoryOneNotSynchronizedFilesMin),
+  "ignoredFiles": zod.number().int().min(getSyncDashboardResponseInventoryOneIgnoredFilesMin).optional(),
+  "ignoredBytes": zod.number().int().min(getSyncDashboardResponseInventoryOneIgnoredBytesMin).optional()
 }),zod.null()])
 })
 
@@ -128,6 +134,8 @@ export const GetSyncDashboardResponse = zod.object({
 /**
  * @summary Read the shared Shufflrr to SharePoint sync configuration
  */
+export const getSyncConfigResponseIgnoredFileCountMin = 0;
+
 
 export const getSyncConfigResponseSourceFoldersItemNameMax = 255;
 
@@ -156,6 +164,7 @@ export const getSyncConfigResponseLastRunSummaryOneFileProgressOneProcessedFiles
 
 export const GetSyncConfigResponse = zod.object({
   "configured": zod.boolean(),
+  "ignoredFileCount": zod.number().int().min(getSyncConfigResponseIgnoredFileCountMin).optional(),
   "destinationFolderId": zod.string().nullable(),
   "destinationFolderName": zod.string().nullable(),
   "sourceFolders": zod.array(zod.object({
@@ -239,6 +248,8 @@ export const SaveSyncConfigBody = zod.object({
 })).max(saveSyncConfigBodyExcludedFoldersMax)
 })
 
+export const saveSyncConfigResponseIgnoredFileCountMin = 0;
+
 
 export const saveSyncConfigResponseSourceFoldersItemNameMax = 255;
 
@@ -267,6 +278,7 @@ export const saveSyncConfigResponseLastRunSummaryOneFileProgressOneProcessedFile
 
 export const SaveSyncConfigResponse = zod.object({
   "configured": zod.boolean(),
+  "ignoredFileCount": zod.number().int().min(saveSyncConfigResponseIgnoredFileCountMin).optional(),
   "destinationFolderId": zod.string().nullable(),
   "destinationFolderName": zod.string().nullable(),
   "sourceFolders": zod.array(zod.object({
@@ -311,8 +323,58 @@ export const SaveSyncConfigResponse = zod.object({
 
 
 /**
+ * @summary Approve overwrite on the next sync or persistently ignore selected files
+ */
+
+export const resolveSyncConflictsBodyFailureIdsMax = 100;
+
+
+
+export const ResolveSyncConflictsBody = zod.object({
+  "failureIds": zod.array(zod.number().int().min(1)).min(1).max(resolveSyncConflictsBodyFailureIdsMax),
+  "action": zod.enum(['overwrite', 'ignore'])
+})
+
+export const ResolveSyncConflictsResponse = zod.void()
+
+
+/**
+ * @summary List persistent file ignore rules, including detached mappings
+ */
+export const GetSyncIgnoredFilesResponseItem = zod.object({
+  "id": zod.number().int(),
+  "failureId": zod.number().int(),
+  "name": zod.string(),
+  "path": zod.string(),
+  "destinationFolderName": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "active": zod.boolean(),
+  "fileUrl": zod.string(),
+  "parentFolderUrl": zod.string()
+})
+export const GetSyncIgnoredFilesResponse = zod.array(GetSyncIgnoredFilesResponseItem)
+
+
+/**
+ * @summary Remove selected ignore rules without overwriting or starting sync
+ */
+
+export const reenableSyncFilesBodyRuleIdsMax = 100;
+
+
+
+export const ReenableSyncFilesBody = zod.object({
+  "ruleIds": zod.array(zod.number().int().min(1)).min(1).max(reenableSyncFilesBodyRuleIdsMax)
+})
+
+export const ReenableSyncFilesResponse = zod.void()
+
+
+/**
  * @summary Disconnect saved sync folders without deleting files, mappings, or history
  */
+export const disconnectSyncResponseIgnoredFileCountMin = 0;
+
 
 export const disconnectSyncResponseSourceFoldersItemNameMax = 255;
 
@@ -341,6 +403,7 @@ export const disconnectSyncResponseLastRunSummaryOneFileProgressOneProcessedFile
 
 export const DisconnectSyncResponse = zod.object({
   "configured": zod.boolean(),
+  "ignoredFileCount": zod.number().int().min(disconnectSyncResponseIgnoredFileCountMin).optional(),
   "destinationFolderId": zod.string().nullable(),
   "destinationFolderName": zod.string().nullable(),
   "sourceFolders": zod.array(zod.object({
@@ -393,7 +456,8 @@ export const getSyncFailuresQueryLimitMax = 100;
 
 export const GetSyncFailuresQueryParams = zod.object({
   "after": zod.coerce.number().int().min(getSyncFailuresQueryAfterMin).optional(),
-  "limit": zod.coerce.number().int().min(1).max(getSyncFailuresQueryLimitMax).default(getSyncFailuresQueryLimitDefault)
+  "limit": zod.coerce.number().int().min(1).max(getSyncFailuresQueryLimitMax).default(getSyncFailuresQueryLimitDefault),
+  "includeDismissed": zod.enum(['yes']).optional()
 })
 
 export const getSyncFailuresResponseFailuresItemIssueCountMin = 0;
@@ -411,6 +475,8 @@ export const GetSyncFailuresResponse = zod.object({
   "fileUrl": zod.string().url(),
   "parentFolderUrl": zod.string().url(),
   "canRetry": zod.boolean(),
+  "canResolve": zod.boolean().optional(),
+  "overwriteApproved": zod.boolean().optional(),
   "issueCount": zod.number().int().min(getSyncFailuresResponseFailuresItemIssueCountMin),
   "latestStatus": zod.enum(['failed', 'conflict', 'skipped']),
   "issues": zod.array(zod.object({
@@ -489,6 +555,8 @@ export const SetSyncIntervalBody = zod.object({
   "pollIntervalSeconds": zod.union([zod.literal(1),zod.literal(5),zod.literal(30),zod.literal(60),zod.literal(300),zod.literal(3600)])
 })
 
+export const setSyncIntervalResponseIgnoredFileCountMin = 0;
+
 
 export const setSyncIntervalResponseSourceFoldersItemNameMax = 255;
 
@@ -517,6 +585,7 @@ export const setSyncIntervalResponseLastRunSummaryOneFileProgressOneProcessedFil
 
 export const SetSyncIntervalResponse = zod.object({
   "configured": zod.boolean(),
+  "ignoredFileCount": zod.number().int().min(setSyncIntervalResponseIgnoredFileCountMin).optional(),
   "destinationFolderId": zod.string().nullable(),
   "destinationFolderName": zod.string().nullable(),
   "sourceFolders": zod.array(zod.object({
@@ -567,6 +636,8 @@ export const SetSyncEnabledBody = zod.object({
   "enabled": zod.boolean()
 })
 
+export const setSyncEnabledResponseIgnoredFileCountMin = 0;
+
 
 export const setSyncEnabledResponseSourceFoldersItemNameMax = 255;
 
@@ -595,6 +666,7 @@ export const setSyncEnabledResponseLastRunSummaryOneFileProgressOneProcessedFile
 
 export const SetSyncEnabledResponse = zod.object({
   "configured": zod.boolean(),
+  "ignoredFileCount": zod.number().int().min(setSyncEnabledResponseIgnoredFileCountMin).optional(),
   "destinationFolderId": zod.string().nullable(),
   "destinationFolderName": zod.string().nullable(),
   "sourceFolders": zod.array(zod.object({
@@ -641,6 +713,8 @@ export const SetSyncEnabledResponse = zod.object({
 /**
  * @summary Request an immediate run without changing the polling interval
  */
+export const requestSyncNowResponseIgnoredFileCountMin = 0;
+
 
 export const requestSyncNowResponseSourceFoldersItemNameMax = 255;
 
@@ -669,6 +743,7 @@ export const requestSyncNowResponseLastRunSummaryOneFileProgressOneProcessedFile
 
 export const RequestSyncNowResponse = zod.object({
   "configured": zod.boolean(),
+  "ignoredFileCount": zod.number().int().min(requestSyncNowResponseIgnoredFileCountMin).optional(),
   "destinationFolderId": zod.string().nullable(),
   "destinationFolderName": zod.string().nullable(),
   "sourceFolders": zod.array(zod.object({

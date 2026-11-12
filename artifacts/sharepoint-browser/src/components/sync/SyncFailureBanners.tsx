@@ -8,12 +8,17 @@ import {
   getGetSyncFailuresQueryKey,
   retrySyncFile,
   retryAllSyncFiles,
+  resolveSyncConflicts,
+  getGetSyncIgnoredFilesQueryKey,
+  getGetSyncConfigQueryKey,
+  getGetSyncDashboardQueryKey,
   type SyncFileFailure,
 } from "@workspace/api-client-react";
 import { groupSyncFailures } from "./failureGrouping";
 import { SharePointFailureLinks } from "./SharePointFailureLinks";
+import { SyncResolutionDialog } from "./SyncResolutionDialog";
 
-function FailureItem({ file, compact, retry, dismiss, retryPending, dismissPending, queued }: {
+function FailureItem({ file, compact, retry, dismiss, retryPending, dismissPending, queued, resolve, selected, select }: {
   file: SyncFileFailure;
   compact?: boolean;
   retry: (id: number) => void;
@@ -21,6 +26,9 @@ function FailureItem({ file, compact, retry, dismiss, retryPending, dismissPendi
   retryPending: boolean;
   dismissPending: boolean;
   queued?: { id: number; text: string };
+  resolve: (action: "overwrite" | "ignore", ids: number[]) => void;
+  selected: boolean;
+  select: (id: number, checked: boolean) => void;
 }) {
   const showHistory = file.issueCount > 1 && file.issues.length > 0;
 
@@ -28,10 +36,13 @@ function FailureItem({ file, compact, retry, dismiss, retryPending, dismissPendi
     className={`flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 ${compact ? "p-2" : "p-3"}`}
     data-testid={`sync-failure-${file.id}`}>
     <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
+    {file.canResolve && file.latestStatus === "conflict" && <input type="checkbox" checked={selected}
+      aria-label={`Select conflict for ${file.name}`} onChange={event => select(file.id, event.target.checked)} />}
     <div className="min-w-0 flex-1">
       <div className="break-all text-sm font-medium">{file.name}</div>
       <div className="break-all text-xs text-muted-foreground">{file.path}</div>
       <p className="mt-1 text-sm text-destructive">{file.reason}</p>
+      {file.overwriteApproved && <p role="status" className="mt-1 text-xs font-medium">Overwrite approved for the next sync. Use Sync now to run it.</p>}
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
         <a href={file.fileUrl} target="_blank" rel="noopener noreferrer" data-testid={`link-shufflrr-file-${file.id}`}
           className="inline-flex items-center gap-1 underline">
@@ -42,6 +53,11 @@ function FailureItem({ file, compact, retry, dismiss, retryPending, dismissPendi
           <FolderOpen className="size-3" aria-hidden="true" />Open parent folder in Shufflrr
         </a>
         <SharePointFailureLinks failureId={file.id} />
+        {file.latestStatus === "conflict" && <button type="button" disabled={!file.canResolve} onClick={() => resolve("overwrite", [file.id])}
+          className="rounded border px-2 py-1 font-medium disabled:opacity-50" data-testid={`button-overwrite-file-${file.id}`}>
+          {file.overwriteApproved ? "Review overwrite" : "Overwrite and sync"}</button>}
+        <button type="button" disabled={!file.canResolve} onClick={() => resolve("ignore", [file.id])}
+          className="rounded border px-2 py-1 font-medium disabled:opacity-50" data-testid={`button-ignore-file-${file.id}`}>Ignore</button>
         <button type="button" data-testid={`button-retry-sync-file-${file.id}`}
           disabled={!file.canRetry || retryPending}
           title={file.retryRequestedAt ? "Retry queued; provider cooldowns are respected."
@@ -75,7 +91,7 @@ function FailureItem({ file, compact, retry, dismiss, retryPending, dismissPendi
     </div>
     <button type="button" data-testid={`button-dismiss-sync-failure-${file.id}`}
       className="shrink-0 rounded p-1 hover:bg-destructive/10"
-      aria-label={`Dismiss failure for ${file.name}`} disabled={dismissPending}
+      aria-label={`Dismiss failure for ${file.name}`} title="Hide this notice only; this does not ignore or resolve the file." disabled={dismissPending}
       onClick={() => dismiss(file.id)}>
       <X className="size-4" />
     </button>
@@ -88,7 +104,24 @@ export function SyncFailureBanners({ active }: { active: boolean }) {
   const [previous, setPrevious] = useState<Array<number | undefined>>([]);
   const [queued, setQueued] = useState<{ id: number; text: string }>();
   const [collapsed, setCollapsed] = useState(false);
-  const params = { limit: 20, ...(after ? { after } : {}) };
+  const [showDismissed, setShowDismissed] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [choice, setChoice] = useState<{ action: "overwrite" | "ignore"; ids: number[] } | null>(null);
+  const resolution = useMutation({
+    mutationFn: (input: { action: "overwrite" | "ignore"; failureIds: number[] }) => resolveSyncConflicts(input),
+    onSuccess: async (_, input) => {
+      setChoice(null); setSelected(new Set());
+      setBulkMessage(input.action === "ignore" ? "Ignore rules saved. Review or re-enable them in Ignored files."
+        : "Overwrite approved for the next sync. No files were changed yet; use Sync now to run it.");
+      await Promise.all([getGetSyncFailuresQueryKey(), getGetSyncIgnoredFilesQueryKey(),
+        getGetSyncConfigQueryKey(), getGetSyncDashboardQueryKey()].map(queryKey => client.invalidateQueries({ queryKey })));
+    },
+  });
+  const resolve = (action: "overwrite" | "ignore", ids: number[]) => { resolution.reset(); setChoice({ action, ids }); };
+  const select = (id: number, checked: boolean) => setSelected(previous => {
+    const next = new Set(previous); if (checked) next.add(id); else next.delete(id); return next;
+  });
+  const params = { limit: 20, ...(after ? { after } : {}), ...(showDismissed ? { includeDismissed: "yes" as const } : {}) };
   const query = useQuery({
     queryKey: getGetSyncFailuresQueryKey(params),
     queryFn: ({ signal }) => getSyncFailures(params, { signal }),
@@ -115,6 +148,7 @@ export function SyncFailureBanners({ active }: { active: boolean }) {
     mutationFn: () => dismissAllSyncFailures(),
     onSuccess: async result => {
       setBulkMessage(`${result.clearedCount} file notice${result.clearedCount === 1 ? "" : "s"} cleared.`);
+      setShowDismissed(false);
       setAfter(undefined);
       setPrevious([]);
       await refresh();
@@ -139,7 +173,7 @@ export function SyncFailureBanners({ active }: { active: boolean }) {
     <button className="ml-2 underline" onClick={() => void query.refetch()}>Retry loading</button>
   </div>;
   const data = query.data;
-  if (!data || (!data.total && !retry.error && !dismiss.error && !retryAll.error && !clearAll.error && !bulkMessage)) return null;
+  if (!data) return null;
   const error = retry.error ?? dismiss.error ?? retryAll.error ?? clearAll.error;
   const { notAttempted: skipped, needsAction } = groupSyncFailures(data.failures);
   const retryFile = (id: number) => { dismiss.reset(); retry.mutate(id); };
@@ -178,9 +212,25 @@ export function SyncFailureBanners({ active }: { active: boolean }) {
         </button>
       </div>
     </div>
+    <label className="flex items-center gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
+      <input type="checkbox" checked={showDismissed} onChange={event => {
+        setShowDismissed(event.target.checked); setAfter(undefined); setPrevious([]); setSelected(new Set()); setCollapsed(false);
+      }} data-testid="checkbox-show-dismissed-conflicts" />Review dismissed notices
+    </label>
+    <SyncResolutionDialog choice={choice} busy={resolution.isPending} error={resolution.error} onClose={() => setChoice(null)}
+      onConfirm={() => { if (choice) resolution.mutate({ action: choice.action, failureIds: choice.ids }); }} />
     {bulkMessage && <p role="status" className="border-t px-4 py-2 text-xs text-muted-foreground">{bulkMessage}</p>}
     {!collapsed && <div id="sync-failure-panel-content" className="space-y-2 border-t bg-card p-3" data-testid="sync-failure-panel-content">
+    {!data.total && <p className="text-xs text-muted-foreground">No {showDismissed ? "unresolved" : "visible"} file notices. Use Review dismissed notices to resolve previously hidden conflicts.</p>}
+    {needsAction.some(file => file.latestStatus === "conflict") && <div className="flex flex-wrap items-center gap-3 text-xs">
+      <label className="flex items-center gap-2"><input type="checkbox"
+        checked={selected.size > 0 && needsAction.filter(file => file.latestStatus === "conflict" && file.canResolve).every(file => selected.has(file.id))}
+        onChange={event => setSelected(new Set(event.target.checked ? needsAction.filter(file => file.latestStatus === "conflict" && file.canResolve).map(file => file.id) : []))} />Select conflicts on this page</label>
+      <button className="rounded border px-2 py-1 disabled:opacity-50" disabled={!selected.size || query.isFetching} onClick={() => resolve("overwrite", [...selected])}>Overwrite selected ({selected.size})</button>
+      <button className="rounded border px-2 py-1 disabled:opacity-50" disabled={!selected.size || query.isFetching} onClick={() => resolve("ignore", [...selected])}>Ignore selected ({selected.size})</button>
+    </div>}
     {needsAction.map(file => <FailureItem key={file.id} file={file} retry={retryFile} dismiss={dismissFile}
+      resolve={resolve} selected={selected.has(file.id)} select={select}
       retryPending={retryAll.isPending || (retry.isPending && retry.variables === file.id)} dismissPending={dismiss.isPending} queued={queued} />)}
     {skipped.length > 0 && <details className="rounded-lg border border-muted-foreground/25 bg-muted/20 p-3"
       data-testid="sync-not-attempted-group">
@@ -192,6 +242,7 @@ export function SyncFailureBanners({ active }: { active: boolean }) {
       </p>
       <div className="mt-2 space-y-2">
         {skipped.map(file => <FailureItem key={file.id} file={file} compact retry={retryFile} dismiss={dismissFile}
+          resolve={resolve} selected={selected.has(file.id)} select={select}
           retryPending={retryAll.isPending || (retry.isPending && retry.variables === file.id)} dismissPending={dismiss.isPending} queued={queued} />)}
       </div>
     </details>}

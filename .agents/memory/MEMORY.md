@@ -7,3 +7,5 @@
 - [OpenAPI parameter collisions](openapi-parameter-collisions.md) — combined path and query parameters can collide in generated exports; fix the contract, not generated files.
 - [Shufflrr large media](shufflrr-large-media.md) — source content includes large videos; verify native portal links rather than assuming presentation-only URLs.
 - [Sync deletion policy](sync-deletion-policy.md) — verified deletions run first so one persistent upload failure cannot indefinitely block unrelated cleanup.
+- [File ignore policy](sync-file-rule-policy.md) — ignored files must remain discoverable; re-enabling never grants overwrite permission.
+- [Neon worker locks](neon-worker-locks.md) — transaction pooling requires transaction-scoped run locks; old session locks can remain stranded.

@@ -54,6 +54,8 @@ export interface SyncInventorySnapshot {
   failedFiles: number;
   pendingFiles: number;
   notSynchronizedFiles: number;
+  ignoredFiles?: number;
+  ignoredBytes?: number;
 }
 
 export const syncConfigTable = pgTable("sync_config", {

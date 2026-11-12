@@ -111,6 +111,45 @@ export interface SyncSourceFolder {
   name: string;
 }
 
+export type SyncResolutionInputAction = typeof SyncResolutionInputAction[keyof typeof SyncResolutionInputAction];
+
+
+export const SyncResolutionInputAction = {
+  overwrite: 'overwrite',
+  ignore: 'ignore',
+} as const;
+
+export interface SyncResolutionInput {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     * @items.minimum 1
+     */
+  failureIds: number[];
+  action: SyncResolutionInputAction;
+}
+
+export interface SyncRuleSelection {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     * @items.minimum 1
+     */
+  ruleIds: number[];
+}
+
+export interface SyncIgnoredFile {
+  id: number;
+  failureId: number;
+  name: string;
+  path: string;
+  destinationFolderName: string;
+  createdAt: string;
+  active: boolean;
+  fileUrl: string;
+  parentFolderUrl: string;
+}
+
 export type SyncFileFailureLatestStatus = typeof SyncFileFailureLatestStatus[keyof typeof SyncFileFailureLatestStatus];
 
 
@@ -146,6 +185,8 @@ export interface SyncFileFailure {
   fileUrl: string;
   parentFolderUrl: string;
   canRetry: boolean;
+  canResolve?: boolean;
+  overwriteApproved?: boolean;
   /** @minimum 0 */
   issueCount: number;
   latestStatus: SyncFileFailureLatestStatus;
@@ -208,6 +249,10 @@ export interface SyncInventoryTotals {
   pendingFiles: number;
   /** @minimum 0 */
   notSynchronizedFiles: number;
+  /** @minimum 0 */
+  ignoredFiles?: number;
+  /** @minimum 0 */
+  ignoredBytes?: number;
 }
 
 export interface SyncDashboard {
@@ -243,6 +288,8 @@ export const SyncConfigLastRunStatus = {
 
 export interface SyncConfig {
   configured: boolean;
+  /** @minimum 0 */
+  ignoredFileCount?: number;
   /** @nullable */
   destinationFolderId: string | null;
   /** @nullable */
@@ -455,7 +502,15 @@ after?: number;
  * @maximum 100
  */
 limit?: number;
+includeDismissed?: GetSyncFailuresIncludeDismissed;
 };
+
+export type GetSyncFailuresIncludeDismissed = typeof GetSyncFailuresIncludeDismissed[keyof typeof GetSyncFailuresIncludeDismissed];
+
+
+export const GetSyncFailuresIncludeDismissed = {
+  yes: 'yes',
+} as const;
 
 export type GetSyncFailures200 = {
   failures: SyncFileFailure[];

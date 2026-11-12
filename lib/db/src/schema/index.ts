@@ -1,4 +1,5 @@
 export * from "./sync-failures";
+export * from "./sync-file-rules";
 export * from "./sync-failure-issues";
 // Export your models here. Add one export per file
 // export * from "./posts";

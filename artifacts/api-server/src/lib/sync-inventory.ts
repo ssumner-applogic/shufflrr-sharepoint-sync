@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { SyncFolderExclusion, SyncInventorySnapshot, SyncItem, SyncSourceFolder, SyncEventStatus } from "@workspace/db/schema";
+import type { SyncFileRule, SyncFolderExclusion, SyncInventorySnapshot, SyncItem, SyncSourceFolder, SyncEventStatus } from "@workspace/db/schema";
 import type { Entry } from "@workspace/shufflrr";
 import type { SyncDriveItem } from "./sharepoint";
 
@@ -7,10 +7,11 @@ interface Scope {
   destinationFolderId: string;
   sourceFolders: SyncSourceFolder[];
   excludedFolders?: SyncFolderExclusion[];
+  fileRules?: SyncFileRule[];
 }
 interface SourceFile { root: SyncSourceFolder; entry: Entry; path: string }
 type DestinationFile = SyncDriveItem & { path: string };
-type Outcome = "synchronized" | "failed" | "pending";
+type Outcome = "synchronized" | "failed" | "pending" | "ignored";
 
 /** Stable across interval/pause changes, but never shared between different folder scopes. */
 export function syncInventoryScopeKey(scope: Scope): string {
@@ -18,6 +19,9 @@ export function syncInventoryScopeKey(scope: Scope): string {
     destination: scope.destinationFolderId,
     roots: scope.sourceFolders.map(root => root.id).sort((a, b) => a - b),
     excluded: (scope.excludedFolders ?? []).map(folder => `${folder.rootId}:${folder.id}`).sort(),
+    ignored: (scope.fileRules ?? []).filter(rule => rule.action === "ignore" &&
+      rule.destinationRootId === scope.destinationFolderId && scope.sourceFolders.some(root => root.id === rule.sourceRootId))
+      .map(rule => `${rule.sourceRootId}:${rule.sourceId}`).sort(),
   })).digest("hex");
 }
 
@@ -32,6 +36,7 @@ export class SyncInventory {
       sourceFiles: 0, sourceBytes: 0, sourceUnknownSizeFiles: 0,
       synchronizedFiles: 0, synchronizedBytes: 0,
       failedFiles: 0, pendingFiles: 0, notSynchronizedFiles: 0,
+      ignoredFiles: 0, ignoredBytes: 0,
     };
     const bySource = new Map(mappings.filter(item => !item.sourceIsFolder &&
       item.destinationRootId === scope.destinationFolderId).map(item => [`${item.sourceRootId}:${item.sourceId}`, item]));
@@ -54,7 +59,10 @@ export class SyncInventory {
       this.files.set(key, { outcome: "pending", storedBytes: 0 });
       this.totals.pendingFiles++;
       this.totals.notSynchronizedFiles++;
-      if (synchronized) this.set(key, "synchronized", destination!.size);
+      const ignored = scope.fileRules?.some(rule => rule.action === "ignore" &&
+        rule.destinationRootId === scope.destinationFolderId && rule.sourceRootId === source.root.id && rule.sourceId === source.entry.id);
+      if (ignored) { this.set(key, "ignored", 0); this.totals.ignoredBytes! += source.entry.size ?? 0; }
+      else if (synchronized) this.set(key, "synchronized", destination!.size);
     }
   }
 
@@ -69,9 +77,10 @@ export class SyncInventory {
   private set(key: string, outcome: Outcome, storedBytes: number): void {
     const previous = this.files.get(key);
     if (!previous) return;
-    const counter = { synchronized: "synchronizedFiles", failed: "failedFiles", pending: "pendingFiles" } as const;
-    this.totals[counter[previous.outcome]]--;
-    this.totals[counter[outcome]]++;
+    if (previous.outcome === "ignored") return;
+    const counter = { synchronized: "synchronizedFiles", failed: "failedFiles", pending: "pendingFiles", ignored: "ignoredFiles" } as const;
+    this.totals[counter[previous.outcome]]!--;
+    this.totals[counter[outcome]]!++;
     this.totals.synchronizedBytes += (outcome === "synchronized" ? storedBytes : 0) -
       (previous.outcome === "synchronized" ? previous.storedBytes : 0);
     this.totals.notSynchronizedFiles = this.totals.failedFiles + this.totals.pendingFiles;

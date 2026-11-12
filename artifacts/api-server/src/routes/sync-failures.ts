@@ -5,6 +5,7 @@ import {
   syncFileFailureIssuesTable as issues,
   syncFileFailuresTable as failures,
   syncItemsTable,
+  syncFileRulesTable as rules,
 } from "@workspace/db/schema";
 import { GetSyncFailuresQueryParams, DismissSyncFileFailureParams, RetrySyncFileParams, RetryAllSyncFilesResponse,
   GetSyncFailureSharePointLinkParams, GetSyncFailureSharePointLinkResponse } from "@workspace/api-zod";
@@ -24,11 +25,17 @@ function retryableScope(config: typeof syncConfigTable.$inferSelect | undefined)
     eq(failures.destinationRootId, config.destinationFolderId),
     inArray(failures.sourceRootId, config.sourceFolders.map(folder => folder.id)),
     isNull(failures.resolvedAt), isNull(failures.dismissedAt), isNull(failures.retryRequestedAt),
+    notIgnored(),
     ...config.excludedFolders.map(folder => not(and(
       eq(failures.sourceRootId, folder.rootId),
       sql`${failures.ancestorIds} @> ${JSON.stringify([folder.id])}::jsonb`,
     )!)),
   );
+}
+function notIgnored() {
+  return sql`not exists (select 1 from ${rules} where ${rules.action} = 'ignore'
+    and ${rules.sourceId} = ${failures.sourceId} and ${rules.sourceRootId} = ${failures.sourceRootId}
+    and ${rules.destinationRootId} = ${failures.destinationRootId})`;
 }
 
 export function syncFailureRoutes(
@@ -62,7 +69,8 @@ export function syncFailureRoutes(
     if (!parsed.success) { res.status(400).json({ error: "Invalid failure page.", requestId: String(req.id) }); return; }
     try {
       const db = await database();
-      const visible = and(isNull(failures.resolvedAt), isNull(failures.dismissedAt));
+      const visible = and(isNull(failures.resolvedAt),
+        parsed.data.includeDismissed === "yes" ? undefined : isNull(failures.dismissedAt), notIgnored());
       const limit = parsed.data.limit ?? 20;
       const [config] = await db.select().from(syncConfigTable).where(eq(syncConfigTable.id, 1));
       const [total] = await db.select({ value: count() }).from(failures).where(visible);
@@ -70,6 +78,8 @@ export function syncFailureRoutes(
       const rows = await db.select().from(failures).where(and(visible, gt(failures.id, parsed.data.after ?? 0)))
         .orderBy(failures.id).limit(limit + 1);
       const page = rows.slice(0, limit);
+      const overwriteRules = page.length ? await db.select().from(rules).where(and(
+        inArray(rules.failureId, page.map(row => row.id)), eq(rules.action, "overwrite"))) : [];
       const issueRows = page.length
         ? await db.select().from(issues).where(inArray(issues.failureId, page.map(row => row.id)))
           .orderBy(desc(issues.occurredAt), desc(issues.id))
@@ -89,6 +99,8 @@ export function syncFailureRoutes(
             lastFailedAt: row.lastFailedAt.toISOString(),
             retryRequestedAt: row.retryRequestedAt?.toISOString() ?? null,
             canRetry: inScope(row, config) && !row.retryRequestedAt && config?.lastRunStatus !== "running",
+            canResolve: inScope(row, config) && config?.lastRunStatus !== "running",
+            overwriteApproved: overwriteRules.some(rule => rule.failureId === row.id),
             issueCount: fileIssues.length,
             latestStatus: fileIssues[0]?.status ??
               (row.reason.startsWith("Not attempted because this run stopped after an error.") ? "skipped" : "failed"),
@@ -160,6 +172,8 @@ export function syncFailureRoutes(
         if (!row) throw new AccessError("FailureNotFound", "This file failure has already been resolved or is unavailable.", 404);
         const [config] = await tx.select().from(syncConfigTable).where(eq(syncConfigTable.id, 1));
         if (!inScope(row, config)) throw new AccessError("OutsideSyncScope", "This file is no longer in the saved sync scope. Adjust the folders or dismiss the notice.", 409);
+        const [ignored] = await tx.select().from(rules).where(and(eq(rules.failureId, row.id), eq(rules.action, "ignore")));
+        if (ignored) throw new AccessError("FileIgnored", "Re-enable this file from Ignored files before retrying it.", 409);
         await tx.update(failures).set({ retryRequestedAt: new Date(), dismissedAt: null }).where(eq(failures.id, row.id));
         return config!.providerRetryAt && config!.providerRetryAt > new Date() ? config!.providerRetryAt : new Date();
       });

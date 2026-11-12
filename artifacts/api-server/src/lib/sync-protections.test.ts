@@ -5,7 +5,9 @@ import { SetSyncIntervalBody, RetryAllSyncFilesResponse, DismissAllSyncFailuresR
 import { applyDelta, scopeSnapshot } from "./sharepoint-snapshot";
 import type { SyncDriveItem } from "./sharepoint";
 import { performSync } from "./sync-runner";
-import { syncItemsTable, type SyncItem } from "@workspace/db/schema";
+import { syncItemsTable, type SyncItem, type SyncFileRule } from "@workspace/db/schema";
+import { approvedOverwrite, fileInRuleScope } from "./sync-file-rules";
+import { ResolveSyncConflictsBody, ReenableSyncFilesBody } from "@workspace/api-zod";
 import { ShufflrrError, type ShufflrrClient } from "@workspace/shufflrr";
 import type { SyncConflict, SyncLogEventInput, SyncRunSummary } from "@workspace/db/schema";
 import { syncSchedulerDelay } from "./sync-scheduler";
@@ -139,6 +141,7 @@ function engineFixture(seed: SyncItem[] = [], records: (SyncDriveItem & { path: 
   const calls: string[] = [];
   const database = {
     select: () => ({ from: () => ({ where: async () => [...rows] }) }),
+    update: () => ({ set: () => ({ where: async () => {} }) }),
     insert: (table: unknown) => ({
       values: (value: Record<string, unknown>) => ({
         onConflictDoUpdate: () => {
@@ -203,6 +206,97 @@ function mapping(id: number, sourceId: string, destinationId: string, folder: bo
     sourceSize: folder ? 0 : 3, destinationCTag: folder ? null : "old-tag", updatedAt: new Date(0),
   };
 }
+
+const ignoreRule: SyncFileRule = { id: 7, failureId: 7, sourceId: 3, sourceRootId: 1,
+  destinationRootId: "root", destinationRootName: "Shared Documents", action: "ignore",
+  expectedDestinationId: null, expectedETag: null, createdAt: new Date(0) };
+const overwriteRule: SyncFileRule = { ...ignoreRule, action: "overwrite",
+  expectedDestinationId: "existing-file", expectedETag: '"approved-version"' };
+function conflictFixture() {
+  return engineFixture([mapping(1, "1", "existing-folder", true)], [
+    { ...item("existing-folder", "Source", "root", true), path: "Source" },
+    { ...item("existing-file", "deck.pptx", "existing-folder"), path: "Source/deck.pptx" },
+  ]);
+}
+test("ignore rules skip transfers without new failure issues and report separate totals", async () => {
+  const f = conflictFixture();
+  const log = collectLog();
+  const client = sourceClient(false, async () => { assert.fail("Ignored file must not be downloaded"); });
+  const outcome = await performSync(f.database, client, { ...engineConfig, fileRules: [ignoreRule] }, () => {}, f.providers, log);
+  assert.equal(f.calls.length, 0);
+  assert.equal(outcome.conflicts.length, 0);
+  assert.equal(outcome.failedFiles, 0);
+  assert.equal(outcome.summary.inventory?.ignoredFiles, 1);
+  assert.equal(outcome.summary.inventory?.ignoredBytes, 3);
+  assert.equal(outcome.summary.inventory?.notSynchronizedFiles, 0);
+  const event = log.events.find(event => event.path === "Source/deck.pptx")!;
+  assert.equal(event.status, "skipped");
+  assert.equal(event.sourceFile, undefined, "Intentional ignore must not add an actionable failure occurrence");
+});
+test("ignore rules follow source identities through renames without touching old copies", async () => {
+  const f = conflictFixture();
+  const client = sourceClient();
+  client.contents = async () => [{ ...sourceFile, name: "renamed.pptx" }];
+  await performSync(f.database, client, { ...engineConfig, fileRules: [ignoreRule] }, () => {}, f.providers);
+  assert.ok(!f.calls.some(call => call.startsWith("upload:") || call.startsWith("delete:")));
+});
+test("ignored mapped copies remain protected even if their source is removed", async () => {
+  const seed = [mapping(1, "1", "existing-folder", true), mapping(2, "3", "existing-file", false)];
+  const f = engineFixture(seed, [
+    { ...item("existing-folder", "Source", "root", true), path: "Source" },
+    { ...item("existing-file", "deck.pptx", "existing-folder"), path: "Source/deck.pptx" },
+  ]);
+  const client = sourceClient(); client.contents = async () => [];
+  await performSync(f.database, client, { ...engineConfig, fileRules: [ignoreRule] }, () => {}, f.providers);
+  assert.ok(!f.calls.some(call => call.startsWith("delete:")));
+  assert.ok(f.rows().some(row => row.sourceId === "3"));
+});
+test("reenabling restores ordinary conflicts and never silently adopts or overwrites a copy", async () => {
+  const f = conflictFixture();
+  const result = await performSync(f.database, sourceClient(), { ...engineConfig, fileRules: [] }, () => {}, f.providers);
+  assert.equal(result.conflicts.length, 1);
+  assert.ok(!f.calls.some(call => call.startsWith("upload:")));
+  assert.ok(!f.rows().some(row => row.sourceId === "3"));
+});
+test("approved overwrite passes a version precondition and creates a mapping only after verified upload", async () => {
+  const f = conflictFixture();
+  let condition: string | undefined;
+  const upload = f.providers.uploadSyncFile;
+  f.providers.uploadSyncFile = async (...args) => { condition = args[4]; return upload(...args); };
+  const result = await performSync(f.database, sourceClient(), { ...engineConfig, fileRules: [overwriteRule] }, () => {}, f.providers);
+  assert.equal(condition, '"approved-version"');
+  assert.equal(result.summary.updatedFiles, 1);
+  assert.equal(result.conflicts.length, 0);
+  assert.equal(f.rows().find(row => row.sourceId === "3")?.destinationId, "existing-file");
+});
+test("failed overwrite never adopts a file or records synchronization success", async () => {
+  const f = conflictFixture();
+  f.providers.uploadSyncFile = async () => { throw new AccessError("PreconditionFailed", "Destination changed after approval", 412); };
+  const result = await performSync(f.database, sourceClient(), { ...engineConfig, fileRules: [overwriteRule] }, () => {}, f.providers);
+  assert.equal(result.summary.updatedFiles, 0);
+  assert.equal(result.failedFiles, 1);
+  assert.ok(!f.rows().some(row => row.sourceId === "3"));
+});
+test("overwrite refuses a replaced destination, folders, missing versions and another source's ownership", () => {
+  const file = { id: "existing-file", isFolder: false };
+  assert.equal(approvedOverwrite(overwriteRule, file, false), true);
+  assert.equal(approvedOverwrite(overwriteRule, { ...file, id: "replacement" }, false), false);
+  assert.equal(approvedOverwrite(overwriteRule, { ...file, isFolder: true }, false), false);
+  assert.equal(approvedOverwrite({ ...overwriteRule, expectedETag: null }, file, false), false);
+  assert.equal(approvedOverwrite(overwriteRule, file, true), false);
+  assert.equal(approvedOverwrite(ignoreRule, file, false), false);
+});
+test("resolution validation bounds selections and preserves source/target/exclusion boundaries", () => {
+  assert.equal(ResolveSyncConflictsBody.safeParse({ failureIds: [], action: "overwrite" }).success, false);
+  assert.equal(ResolveSyncConflictsBody.safeParse({ failureIds: [1], action: "adopt" }).success, false);
+  assert.equal(ReenableSyncFilesBody.safeParse({ ruleIds: Array.from({ length: 101 }, (_, i) => i + 1) }).success, false);
+  const file = { destinationRootId: "root", sourceRootId: 1, ancestorIds: [1, 2] };
+  const scope = { ...engineConfig, excludedFolders: [] };
+  assert.equal(fileInRuleScope(file, scope), true);
+  assert.equal(fileInRuleScope(file, { ...scope, destinationFolderId: "different" }), false);
+  assert.equal(fileInRuleScope(file, { ...scope, sourceFolders: [] }), false);
+  assert.equal(fileInRuleScope(file, { ...scope, excludedFolders: [{ id: 2, rootId: 1, name: "excluded", ancestorIds: [1] }] }), false);
+});
 
 const exclusion = { id: 2, name: "Nested", rootId: 1, ancestorIds: [1] };
 function excludedFixture(withGoneParent = false) {
