@@ -12,6 +12,16 @@ export function selectRunningActivityRun<T extends { status: string }>(runs: T[]
   return runs.find(run => run.status === "running") ?? null;
 }
 
+/** Later no-change runs must not hide a successful file creation/update. */
+export function selectLatestFileTransferRun<T extends {
+  status: string; startedAt: string; finishedAt: string | null;
+  summary: { copiedFiles: number; updatedFiles: number } | null;
+}>(runs: T[]): T | null {
+  return runs.filter(run => run.status !== "running" && !!run.finishedAt &&
+    ((run.summary?.copiedFiles ?? 0) > 0 || (run.summary?.updatedFiles ?? 0) > 0))
+    .sort((a, b) => Date.parse(b.finishedAt!) - Date.parse(a.finishedAt!))[0] ?? null;
+}
+
 /** Never silently replace a pinned run, including when it leaves retained history. */
 export function selectActivityRun<T extends { id: string }>(
   runs: T[],

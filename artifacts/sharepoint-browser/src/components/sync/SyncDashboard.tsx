@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Info, Loader2 } from "lucide-react";
 import {
   getGetSyncDashboardQueryKey,
@@ -64,10 +65,17 @@ function Totals({ inventory, stale }: { inventory: SyncInventoryTotals; stale: b
 }
 
 export function SyncDashboard({ active, config, reviewIgnored }: { active: boolean; config: SyncConfig | undefined; reviewIgnored: () => void }) {
+  const queryClient = useQueryClient();
   const queryKey = useMemo(() => syncDashboardScopeKey(config), [config?.destinationFolderId, config?.sourceFolders, config?.excludedFolders]);
   const dashboard = useGetSyncDashboard({
     query: { queryKey, enabled: active && !!config, refetchInterval: active ? 5000 : false, refetchIntervalInBackground: false },
   });
+  // A fast run can start and finish between polls. Its final timestamp still
+  // triggers a fresh totals request instead of waiting for the dashboard timer.
+  useEffect(() => {
+    if (active && config?.lastRunAt && ["success", "partial", "failed"].includes(config.lastRunStatus ?? ""))
+      void queryClient.invalidateQueries({ queryKey });
+  }, [active, config?.lastRunAt, config?.lastRunStatus, queryClient, queryKey]);
   const data = dashboard.data;
   const inventory = data?.inventory ?? null;
   const showError = dashboard.isError;

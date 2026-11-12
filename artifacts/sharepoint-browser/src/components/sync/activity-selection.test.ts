@@ -1,9 +1,33 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { selectActivityRun, selectRunningActivityRun, selectRequestedRetryRun } from "./activity-selection";
+import { selectActivityRun, selectRunningActivityRun, selectRequestedRetryRun, selectLatestFileTransferRun } from "./activity-selection";
 
 const finished = { id: "finished", status: "partial", processed: 56 };
 const running = { id: "running", status: "running", processed: 0 };
+
+function transferRun(id: string, minute: number, copiedFiles: number, updatedFiles = 0, status = "success") {
+  const time = new Date(Date.UTC(2026, 10, 12, 20, minute)).toISOString();
+  return { id, startedAt: time, finishedAt: time, status, summary: { copiedFiles, updatedFiles } };
+}
+
+test("later no-change runs cannot hide the most recent file creation", () => {
+  const created = transferRun("created", 39, 2);
+  const noChanges = transferRun("no-changes", 43, 0);
+  assert.equal(selectLatestFileTransferRun([noChanges, created]), created);
+  assert.equal(selectLatestFileTransferRun([created, noChanges]), created);
+});
+
+test("a later completed update takes precedence, including applied work in partial runs", () => {
+  const created = transferRun("created", 39, 2);
+  const updated = transferRun("updated", 44, 0, 1, "partial");
+  assert.equal(selectLatestFileTransferRun([created, updated]), updated);
+});
+
+test("unconfirmed running transfers and legacy empty summaries do not claim completion", () => {
+  const live = { ...transferRun("live", 45, 1, 0, "running"), finishedAt: null };
+  const legacy = { ...transferRun("legacy", 39, 0), summary: null };
+  assert.equal(selectLatestFileTransferRun([live, legacy, transferRun("noop", 46, 0)]), null);
+});
 
 test("new runs cannot reset a pinned completed activity log", () => {
   assert.equal(selectActivityRun([running, finished], finished.id, false), finished);

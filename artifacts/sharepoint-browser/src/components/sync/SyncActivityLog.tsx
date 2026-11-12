@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { selectActivityRun, selectRunningActivityRun, selectRequestedRetryRun } from "./activity-selection";
+import { selectActivityRun, selectRunningActivityRun, selectRequestedRetryRun, selectLatestFileTransferRun } from "./activity-selection";
 import { ChevronDown, ChevronLeft, ChevronRight, History, Loader2 } from "lucide-react";
 import {
   getGetSyncRunEventsQueryKey,
@@ -16,8 +16,8 @@ import {
 
 const PAGE_SIZE = 50;
 
-const statusMeta: Record<SyncEventStatus, { label: string; tone: string }> = {
-  copied: { label: "Copied", tone: "text-emerald-700 bg-emerald-500/10 border-emerald-600/30" },
+const statusMeta: Record<SyncEventStatus, { label: string; filterLabel?: string; tone: string }> = {
+  copied: { label: "File created", filterLabel: "Files created", tone: "text-emerald-700 bg-emerald-500/10 border-emerald-600/30" },
   updated: { label: "Updated", tone: "text-sky-700 bg-sky-500/10 border-sky-600/30" },
   created: { label: "Folders created", tone: "text-teal-700 bg-teal-500/10 border-teal-600/30" },
   moved: { label: "Moved", tone: "text-indigo-700 bg-indigo-500/10 border-indigo-600/30" },
@@ -176,6 +176,7 @@ export function SyncActivityLog({ config, active, retryQueuedAt = null, onRetryS
     ? config.lastRunConflicts : [];
 
   const activeRun = selectRunningActivityRun(runs);
+  const latestFileTransfer = selectLatestFileTransferRun(runs);
   // Live execution is independent of the historical run selected for review.
   const runningNow = !!activeRun || config.lastRunStatus === "running";
 
@@ -200,6 +201,22 @@ export function SyncActivityLog({ config, active, retryQueuedAt = null, onRetryS
           {legacy.length > 0 && ` · ${legacy.length} legacy item${legacy.length === 1 ? "" : "s"}`}
         </span>
       </button>
+
+      {latestFileTransfer && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-xs" data-testid="sync-latest-file-change">
+          <div>
+            <p className="font-medium">Most recent file creation/update: {latestFileTransfer.summary?.copiedFiles ?? 0} files created · {latestFileTransfer.summary?.updatedFiles ?? 0} files updated</p>
+            <p className="mt-1 text-muted-foreground">{fmt(latestFileTransfer.finishedAt)} · {runMeta[latestFileTransfer.status].label} · From retained run history; later no-change runs do not replace this result.</p>
+          </div>
+          <button type="button" className="rounded border px-2 py-1" data-testid="button-view-latest-file-change"
+            onClick={() => {
+              setRunId(latestFileTransfer.id); setFollowLatest(false); setOpen(true);
+              setFilter((latestFileTransfer.summary?.copiedFiles ?? 0) > 0 ? "copied" : "updated");
+            }}>
+            {(latestFileTransfer.summary?.copiedFiles ?? 0) > 0 ? "View created files" : "View updated files"}
+          </button>
+        </div>
+      )}
 
       {runningNow && (
         <div className="flex flex-wrap items-center gap-2 border-t bg-sky-50/60 px-4 py-3 text-xs" role="status" data-testid="sync-live-run-status">
@@ -304,7 +321,7 @@ export function SyncActivityLog({ config, active, retryQueuedAt = null, onRetryS
                       className={`rounded border px-2 py-1 text-[11px] font-medium ${statusMeta[s].tone} ${filter === s ? "ring-1 ring-current" : n === 0 ? "opacity-45" : ""}`}
                       data-testid={`button-filter-${s}`}
                     >
-                      {statusMeta[s].label} {page ? n : ""}
+                      {statusMeta[s].filterLabel ?? statusMeta[s].label} {page ? n : ""}
                     </button>
                   );
                 })}
