@@ -151,7 +151,12 @@ function engineFixture(seed: SyncItem[] = [], records: (SyncDriveItem & { path: 
         },
       }),
     }),
-    delete: () => ({ where: async () => {} }),
+    delete: (table: unknown) => ({ where: async (condition: SQL) => {
+      if (table === syncItemsTable) {
+        const ids = new Set(new PgDialect().sqlToQuery(condition).params);
+        rows = rows.filter(row => !ids.has(row.id));
+      }
+    } }),
   } as unknown as typeof import("@workspace/db")["db"];
   let sequence = 0;
   const providers: Parameters<typeof performSync>[4] = {
@@ -290,7 +295,7 @@ test("source ancestor deletion cannot recursively delete excluded descendants", 
     ...engineConfig, excludedFolders: [{ ...exclusion, ancestorIds: [1, 7] }],
   }, () => {}, fixture.providers, log);
   assert.deepEqual(fixture.calls, []);
-  assert.match(log.events.find(event => event.path === "Source/Gone")?.message ?? "", /would also delete excluded/);
+  assert.match(log.events.find(event => event.path === "Source/Gone")?.message ?? "", /contains excluded/);
 });
 
 test("source ancestor deletion also preserves preexisting SharePoint-only content", async () => {
@@ -432,8 +437,13 @@ test("a conflict logs the exact folder and every descendant skipped under it", a
   assert.deepEqual(fixture.calls, []);
 });
 
-test("an oversized file is recorded while independent later files continue and deletions are deferred", async () => {
-  const fixture = engineFixture([], [{ ...item("existing", "conflict.txt", "parent"), path: "Source/conflict.txt" }]);
+test("verified deletions precede transfers even when an oversized file fails later", async () => {
+  const fixture = engineFixture([
+    { ...mapping(1, "99", "stale", false), relativePath: "Source/gone.pdf" },
+  ], [
+    { ...item("existing", "conflict.txt", "parent"), path: "Source/conflict.txt" },
+    { ...item("stale", "gone.pdf", "root"), path: "Source/gone.pdf" },
+  ]);
   const client = {
     folder: async () => sourceRoot,
     contents: async () => [
@@ -456,8 +466,10 @@ test("an oversized file is recorded while independent later files continue and d
   assert.equal(log.events.find(row => row.status === "failed")?.path, "Source/huge.pptx");
   assert.match(log.events.find(row => row.status === "failed")!.message, /300 MB/);
   assert.equal(log.events.find(row => row.path === "Source/later.pdf")?.status, "copied");
-  assert.match(log.events.find(row => row.itemType === "run")!.message, /deletions deferred/);
-  assert.ok(!fixture.calls.some(call => call.startsWith("delete:")));
+  assert.equal(fixture.calls[0], "delete:stale");
+  assert.equal(result.summary.deletedItems, 1);
+  assert.ok(!fixture.rows().some(row => row.destinationId === "stale"));
+  assert.ok(!log.events.some(row => /deletions deferred/i.test(row.message)));
 });
 
 test("file-local upload errors do not prevent later independent files from syncing", async () => {
@@ -481,7 +493,7 @@ test("file-local upload errors do not prevent later independent files from synci
   }
 });
 
-test("shared and unknown failures stop later files and never perform deletions", async () => {
+test("shared and unknown transfer failures stop later files without undoing verified earlier deletions", async () => {
   for (const error of [
     new AccessError("Denied", "Denied", 403),
     new FileTransferError("Upload denied", 401),
@@ -490,7 +502,9 @@ test("shared and unknown failures stop later files and never perform deletions",
     new Error("database unavailable"),
     new TypeError("fetch failed"),
   ]) {
-    const fixture = engineFixture();
+    const fixture = engineFixture([
+      { ...mapping(1, "99", "stale", false), relativePath: "Source/gone.pdf" },
+    ], [{ ...item("stale", "gone.pdf", "root"), path: "Source/gone.pdf" }]);
     fixture.providers.uploadSyncFile = async () => { throw error; };
     const client = { folder: async () => sourceRoot, contents: async () => [
       sourceFile, { ...sourceFile, id: 6, name: "later.pdf" },
@@ -498,7 +512,8 @@ test("shared and unknown failures stop later files and never perform deletions",
     const log = collectLog();
     await assert.rejects(performSync(fixture.database, client, engineConfig, () => {}, fixture.providers, log));
     assert.equal(log.events.find(row => row.path === "Source/later.pdf")?.status, "skipped");
-    assert.ok(!fixture.calls.some(call => call.startsWith("delete:")));
+    assert.equal(fixture.calls[0], "delete:stale");
+    assert.equal(log.summary?.deletedItems, 1);
   }
 });
 
@@ -564,7 +579,7 @@ test("a persisted pause stops automatic work, but not explicitly requested targe
   assert.equal(checks, 1, "Targeted retries are explicitly allowed while automatic sync is paused");
 });
 
-test("pause finishes the current file, then stops before later files or mirror deletion", async () => {
+test("pause during a transfer finishes the file and prevents later transfers after deletion-first cleanup", async () => {
   const stale = { ...mapping(2, "99", "stale", false), relativePath: "Source/gone.pdf" };
   const fixture = engineFixture([stale], [{ ...item("stale", "gone.pdf", "root"), path: "Source/gone.pdf" }]);
   let paused = false;
@@ -582,7 +597,8 @@ test("pause finishes the current file, then stops before later files or mirror d
     async () => { if (paused) throw new SyncPauseRequested(); }), SyncPauseRequested);
   assert.equal(log.events.find(event => event.path === "Source/deck.pptx")?.status, "copied");
   assert.ok(fixture.rows().some(row => row.sourceId === "3"), "Completed file retains its mapping");
-  assert.ok(!fixture.calls.some(call => call.includes("later.pdf") || call.startsWith("delete:")));
+  assert.equal(fixture.calls[0], "delete:stale");
+  assert.ok(!fixture.calls.some(call => call.includes("later.pdf")));
   assert.ok(!log.events.some(event => event.status === "failed"));
 });
 
@@ -614,7 +630,7 @@ test("pausing between deletions prevents deleting the next managed item", async 
   assert.ok(!fixture.calls.includes("delete:d-second"));
 });
 
-test("a source file removed during download does not block the next file or delete stale managed copies", async () => {
+test("a source file removed during download does not block independent verified deletions or later uploads", async () => {
   const stale = { ...mapping(1, "99", "stale", false), relativePath: "Source/gone.pdf" };
   const fixture = engineFixture([stale], [{ ...item("stale", "gone.pdf", "root"), path: "Source/gone.pdf" }]);
   const client = {
@@ -630,7 +646,120 @@ test("a source file removed during download does not block the next file or dele
   assert.equal(result.failedFiles, 1);
   assert.equal(result.summary.copiedFiles, 1);
   assert.equal(log.events.find(row => row.path === "Source/later.pdf")?.status, "copied");
-  assert.ok(!fixture.calls.includes("delete:stale"));
+  assert.equal(fixture.calls[0], "delete:stale");
+  assert.ok(!fixture.rows().some(row => row.destinationId === "stale"));
+});
+
+test("an incomplete nested source listing prevents all deletions and transfers", async () => {
+  const fixture = engineFixture([mapping(1, "99", "stale", false)], [
+    { ...item("stale", "gone.pdf", "root"), path: "Source/gone.pdf" },
+  ]);
+  const client = {
+    folder: async () => sourceRoot,
+    contents: async (id: number) => {
+      if (id === 1) return [{ id: 2, name: "Nested", isFolder: true }];
+      throw new ShufflrrError("http", "Unavailable", undefined, 403);
+    },
+  } as unknown as ShufflrrClient;
+  await assert.rejects(performSync(fixture.database, client, engineConfig, () => {}, fixture.providers));
+  assert.deepEqual(fixture.calls, []);
+  assert.ok(fixture.rows().some(row => row.destinationId === "stale"));
+});
+
+test("an inaccessible selected source root cannot be treated as an empty folder", async () => {
+  for (const status of [401, 404, 429, 503]) {
+    const fixture = engineFixture([mapping(1, "99", "stale", false)], [
+      { ...item("stale", "gone.pdf", "root"), path: "Source/gone.pdf" },
+    ]);
+    const client = { folder: async () => {
+      throw new ShufflrrError("http", "Unavailable", undefined, status);
+    } } as unknown as ShufflrrClient;
+    await assert.rejects(performSync(fixture.database, client, engineConfig, () => {}, fixture.providers));
+    assert.deepEqual(fixture.calls, []);
+  }
+});
+
+test("a restored source file is kept even if its next upload fails", async () => {
+  const fixture = engineFixture([mapping(1, "1", "d-root", true), mapping(2, "3", "d-file", false)], [
+    { ...item("d-root", "Source", "root", true), path: "Source" },
+    { ...item("d-file", "deck.pptx", "d-root"), path: "Source/deck.pptx" },
+  ]);
+  fixture.providers.uploadSyncFile = async () => { throw new FileTransferError("File exceeds upload limit"); };
+  const result = await performSync(fixture.database, sourceClient(), engineConfig, () => {}, fixture.providers);
+  assert.equal(result.failedFiles, 1);
+  assert.equal(result.summary.deletedItems, 0);
+  assert.ok(!fixture.calls.some(call => call.startsWith("delete:")));
+});
+
+test("a stale folder with a live child is retained until the child has moved safely", async () => {
+  const fixture = engineFixture([
+    mapping(1, "1", "d-root", true),
+    { ...mapping(2, "7", "d-gone", true), sourceParentId: "1", relativePath: "Source/Gone" },
+    { ...mapping(3, "3", "d-file", false), sourceParentId: "7", relativePath: "Source/Gone/deck.pptx" },
+  ], [
+    { ...item("d-root", "Source", "root", true), path: "Source" },
+    { ...item("d-gone", "Gone", "d-root", true), path: "Source/Gone" },
+    { ...item("d-file", "deck.pptx", "d-gone"), path: "Source/Gone/deck.pptx" },
+  ]);
+  const log = collectLog();
+  await performSync(fixture.database, sourceClient(), engineConfig, () => {}, fixture.providers, log);
+  assert.ok(!fixture.calls.some(call => call.startsWith("delete:")));
+  assert.ok(fixture.calls.includes("move:d-file"));
+  assert.match(log.events.find(event => event.path === "Source/Gone")?.message ?? "", /still-live/);
+  const next = engineFixture(fixture.rows(), [
+    { ...item("d-root", "Source", "root", true), path: "Source" },
+    { ...item("d-gone", "Gone", "d-root", true), path: "Source/Gone" },
+    { ...item("d-file", "deck.pptx", "d-root"), cTag: "new-tag", path: "Source/deck.pptx" },
+  ]);
+  await performSync(next.database, sourceClient(), engineConfig, () => {}, next.providers);
+  assert.deepEqual(next.calls, ["delete:d-gone"], "The now-empty old parent is deleted on the next full run");
+});
+
+test("a stale folder cascades once and records deleted descendants regardless of mapping order", async () => {
+  const fixture = engineFixture([
+    { ...mapping(2, "8", "d-child", false), sourceParentId: "7", relativePath: "Source/Gone/child.pdf" },
+    { ...mapping(3, "7", "d-gone", true), sourceParentId: "1", relativePath: "Source/Gone" },
+    mapping(1, "1", "d-root", true),
+  ], [
+    { ...item("d-root", "Source", "root", true), path: "Source" },
+    { ...item("d-gone", "Gone", "d-root", true), path: "Source/Gone" },
+    { ...item("d-child", "child.pdf", "d-gone"), path: "Source/Gone/child.pdf" },
+  ]);
+  const client = { folder: async () => sourceRoot, contents: async () => [] } as unknown as ShufflrrClient;
+  const log = collectLog();
+  await performSync(fixture.database, client, engineConfig, () => {}, fixture.providers, log);
+  assert.deepEqual(fixture.calls, ["delete:d-gone"]);
+  assert.equal(log.events.find(event => event.path === "Source/Gone/child.pdf")?.status, "deleted");
+  assert.deepEqual(fixture.rows().map(row => row.destinationId), ["d-root"]);
+});
+
+test("stale files moved out of a stale destination folder are deleted separately using actual ancestry", async () => {
+  const fixture = engineFixture([
+    mapping(1, "1", "d-root", true),
+    { ...mapping(2, "7", "d-gone", true), sourceParentId: "1", relativePath: "Source/Gone" },
+    { ...mapping(3, "8", "d-child", false), sourceParentId: "7", relativePath: "Source/Gone/child.pdf" },
+  ], [
+    { ...item("d-root", "Source", "root", true), path: "Source" },
+    { ...item("d-gone", "Gone", "d-root", true), path: "Source/Gone" },
+    { ...item("d-child", "child.pdf", "d-root"), path: "Source/child.pdf" },
+  ]);
+  const client = { folder: async () => sourceRoot, contents: async () => [] } as unknown as ShufflrrClient;
+  await performSync(fixture.database, client, engineConfig, () => {}, fixture.providers);
+  assert.deepEqual(fixture.calls, ["delete:d-gone", "delete:d-child"]);
+});
+
+test("a deletion failure is logged and stops the run before any file transfer", async () => {
+  const fixture = engineFixture([mapping(1, "99", "stale", false)], [
+    { ...item("stale", "gone.pdf", "root"), path: "Source/gone.pdf" },
+  ]);
+  fixture.providers.deleteSyncItem = async id => {
+    fixture.calls.push(`delete:${id}`);
+    throw new AccessError("Denied", "Deletion denied", 403);
+  };
+  const log = collectLog();
+  await assert.rejects(performSync(fixture.database, sourceClient(), engineConfig, () => {}, fixture.providers, log));
+  assert.deepEqual(fixture.calls, ["delete:stale"]);
+  assert.equal(log.events.find(event => event.status === "failed")?.itemType, "file");
   assert.ok(fixture.rows().some(row => row.destinationId === "stale"));
 });
 

@@ -6,3 +6,4 @@
 - [Large folder collections](large-folder-collections.md) — expect very large Shufflrr and SharePoint trees; keep navigation bounded and sync actions visible.
 - [OpenAPI parameter collisions](openapi-parameter-collisions.md) — combined path and query parameters can collide in generated exports; fix the contract, not generated files.
 - [Shufflrr large media](shufflrr-large-media.md) — source content includes large videos; verify native portal links rather than assuming presentation-only URLs.
+- [Sync deletion policy](sync-deletion-policy.md) — verified deletions run first so one persistent upload failure cannot indefinitely block unrelated cleanup.

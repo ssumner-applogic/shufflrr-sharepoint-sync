@@ -332,7 +332,9 @@ export async function performSync(
   const conflictKeys = new Set<string>();
   const conflictDestinationIds = new Set<string>();
   const blockedSourceFolders = new Set<string>();
-  const liveSourceKeys = new Set<string>();
+  // Absence is established by the complete source scan, not by successful uploads.
+  const liveSourceKeys = new Set(allSourceRecords.map(record =>
+    sourceKey(String(record.root.id), String(record.entry.id), record.entry.isFolder)));
   const mappedDestinationIds = new Set<string>();
   let failedFiles = 0;
   const summary: SyncRunSummary = {
@@ -388,6 +390,101 @@ export async function performSync(
       "This copy is inside an excluded subtree and is no longer synchronized. It was left unchanged.");
   }
 
+  // Full source and destination listings succeeded before any destructive action.
+  // Targeted retries intentionally never perform mirror deletions.
+  const staleCandidates = retryKeys ? [] : existingMappings.filter(mapping =>
+    !protectedMappingIds.has(mapping.id) &&
+    !liveSourceKeys.has(sourceKey(mapping.sourceRootId, mapping.sourceId, mapping.sourceIsFolder)),
+  );
+  const destinationAncestors = (id: string) => {
+    const ancestors: string[] = [];
+    const visited = new Set([id]);
+    let parent = destinationById.get(id)?.parentId;
+    while (parent && parent !== destinationRoot.id && !visited.has(parent)) {
+      visited.add(parent);
+      ancestors.push(parent);
+      parent = destinationById.get(parent)?.parentId;
+    }
+    return ancestors;
+  };
+  const allManagedIds = new Set(allMappingsForDestination.map(mapping => mapping.destinationId));
+  const deletionProtectedIds = new Set([
+    ...excludedDestinationIds, ...detachedDestinationIds,
+    ...initialDestinations.filter(item => !allManagedIds.has(item.id)).map(item => item.id),
+    // A live source child may still be inside a stale destination parent until it is moved below.
+    ...existingMappings.filter(mapping =>
+      liveSourceKeys.has(sourceKey(mapping.sourceRootId, mapping.sourceId, mapping.sourceIsFolder)),
+    ).map(mapping => mapping.destinationId),
+  ]);
+  const protectedAncestorDestinations = new Set<string>();
+  for (const id of deletionProtectedIds) {
+    for (const ancestor of destinationAncestors(id)) protectedAncestorDestinations.add(ancestor);
+  }
+  const childrenByParent = new Map<string, string[]>();
+  for (const item of initialDestinations) {
+    if (!item.parentId) continue;
+    const children = childrenByParent.get(item.parentId) ?? [];
+    children.push(item.id);
+    childrenByParent.set(item.parentId, children);
+  }
+  const staleMappings = staleCandidates.filter(mapping =>
+    !mapping.sourceIsFolder || !protectedAncestorDestinations.has(mapping.destinationId));
+  for (const mapping of staleCandidates.filter(mapping =>
+    mapping.sourceIsFolder && protectedAncestorDestinations.has(mapping.destinationId))) {
+    await recordEvent(mapping.relativePath, true, "skipped",
+      "Folder retained because it contains excluded, unmanaged, or still-live SharePoint copies. It will be checked again on the next full run.");
+  }
+  const staleFolderDestinationIds = new Set(staleMappings
+    .filter(mapping => mapping.sourceIsFolder).map(mapping => mapping.destinationId));
+  const deletedDestinationIds = new Set<string>();
+  const deletionEvents = new Set<string>();
+  for (const mapping of staleMappings) {
+    await checkpoint();
+    // Use current destination ancestry: source ancestry can be stale after a move.
+    if (destinationAncestors(mapping.destinationId).some(id => staleFolderDestinationIds.has(id))) continue;
+    if (!destinationById.has(mapping.destinationId)) continue;
+    try {
+      const removedIds = new Set<string>([mapping.destinationId]);
+      const descendants = [mapping.destinationId];
+      while (descendants.length) {
+        for (const id of childrenByParent.get(descendants.pop()!) ?? []) {
+          if (!removedIds.has(id)) { removedIds.add(id); descendants.push(id); }
+        }
+      }
+      await providers.deleteSyncItem(mapping.destinationId);
+      summary.deletedItems += 1;
+      for (const id of removedIds) {
+        deletedDestinationIds.add(id);
+        destinationById.delete(id);
+      }
+      await recordEvent(mapping.relativePath, mapping.sourceIsFolder, "deleted",
+        "Managed SharePoint copy deleted after a complete source scan confirmed its source is absent.");
+      deletionEvents.add(mapping.destinationId);
+    } catch (error) {
+      await recordEvent(mapping.relativePath, mapping.sourceIsFolder, "failed", safeError(error));
+      throw error;
+    }
+  }
+  for (const mapping of staleMappings) {
+    if (deletionEvents.has(mapping.destinationId)) continue;
+    await recordEvent(mapping.relativePath, mapping.sourceIsFolder,
+      deletedDestinationIds.has(mapping.destinationId) ? "deleted" : "skipped",
+      deletedDestinationIds.has(mapping.destinationId)
+        ? "Deleted with its managed parent folder after the source scan confirmed its source is absent."
+        : "Source and SharePoint copy were already absent; the obsolete sync mapping was removed.");
+  }
+  if (deletedDestinationIds.size) {
+    await db.delete(syncSharepointItemsTable).where(and(
+      eq(syncSharepointItemsTable.driveId, driveId),
+      inArray(syncSharepointItemsTable.itemId, [...deletedDestinationIds]),
+    ));
+  }
+  if (staleMappings.length) {
+    await db.delete(syncItemsTable).where(inArray(syncItemsTable.id, staleMappings.map(mapping => mapping.id)));
+  }
+  destinationByPath.clear();
+  for (const [path, item] of rebuildDestinationPathIndex(destinationById)) destinationByPath.set(path, item);
+
   for (const [recordIndex, record] of sourceRecords.entries()) {
     // Finish the active item before pausing; unattempted items are not failures.
     await checkpoint();
@@ -396,7 +493,6 @@ export async function performSync(
     const rootId = String(record.root.id);
     const itemId = String(record.entry.id);
     const key = sourceKey(rootId, itemId, record.entry.isFolder);
-    liveSourceKeys.add(key);
     const mapping = mappingBySource.get(key);
     if (mapping) mappedDestinationIds.add(mapping.destinationId);
     if (record.parentSourceId && blockedSourceFolders.has(`${rootId}:${record.parentSourceId}`)) {
@@ -589,7 +685,7 @@ export async function performSync(
       await recordEvent(record.path, record.entry.isFolder, "failed", safeError(error));
       if (!record.entry.isFolder && canContinueAfterFileError(error)) {
         failedFiles += 1;
-        // Independent files can proceed. Mirror deletion is deferred until an error-free run.
+        // Independent files can proceed; verified deletions already ran before transfers.
         continue;
       }
       // Folder prerequisites and shared/unknown failures still stop the run.
@@ -603,114 +699,6 @@ export async function performSync(
   }
 
   await checkpoint();
-  if (failedFiles && !retryKeys) await reporter.record({
-    status: "skipped", itemType: "run", path: null, destinationPath: null,
-    message: "Mirror deletions deferred because some files failed. Independent files were still processed.",
-  });
-  const staleCandidates = retryKeys || failedFiles ? [] : existingMappings.filter(mapping =>
-    !protectedMappingIds.has(mapping.id) &&
-    !liveSourceKeys.has(sourceKey(mapping.sourceRootId, mapping.sourceId, mapping.sourceIsFolder)),
-  );
-  // Deleting an ancestor would recursively delete excluded or otherwise unmanaged copies.
-  const allManagedIds = new Set(allMappingsForDestination.map(mapping => mapping.destinationId));
-  const deletionProtectedIds = new Set([
-    ...excludedDestinationIds, ...detachedDestinationIds,
-    ...initialDestinations.filter(item => !allManagedIds.has(item.id)).map(item => item.id),
-  ]);
-  const protectedAncestorDestinations = new Set<string>();
-  for (const id of deletionProtectedIds) {
-    let parent = destinationById.get(id)?.parentId;
-    while (parent && parent !== destinationRoot.id && !protectedAncestorDestinations.has(parent)) {
-      protectedAncestorDestinations.add(parent);
-      parent = destinationById.get(parent)?.parentId;
-    }
-  }
-  const preservedAncestorIds = new Set(staleCandidates.filter(mapping =>
-    mapping.sourceIsFolder && protectedAncestorDestinations.has(mapping.destinationId)).map(mapping => mapping.id));
-  for (const mapping of staleCandidates.filter(item => preservedAncestorIds.has(item.id))) {
-    await recordEvent(mapping.relativePath, true, "skipped",
-      "Folder retained because deleting it would also delete excluded or unmanaged SharePoint copies.");
-  }
-  const staleMappings = staleCandidates.filter(mapping => !preservedAncestorIds.has(mapping.id));
-  const staleFolderKeys = new Set(staleMappings
-    .filter(mapping => mapping.sourceIsFolder)
-    .map(mapping => `${mapping.sourceRootId}:${mapping.sourceId}`));
-  const deletedDestinationIds = new Set<string>();
-  const deletionEvents = new Set<string>();
-
-  for (const mapping of staleMappings) {
-    await checkpoint();
-    try {
-    if (mapping.sourceIsFolder) {
-      let parent = mapping.sourceParentId;
-      let coveredByMissingFolder = false;
-      while (parent) {
-        if (staleFolderKeys.has(`${mapping.sourceRootId}:${parent}`)) {
-          coveredByMissingFolder = true;
-          break;
-        }
-        const parentMapping = existingMappings.find(item =>
-          item.sourceRootId === mapping.sourceRootId && item.sourceIsFolder && item.sourceId === parent,
-        );
-        parent = parentMapping?.sourceParentId ?? null;
-      }
-      if (coveredByMissingFolder) continue;
-    } else {
-      let parent = mapping.sourceParentId;
-      let coveredByMissingFolder = false;
-      while (parent) {
-        if (staleFolderKeys.has(`${mapping.sourceRootId}:${parent}`)) {
-          coveredByMissingFolder = true;
-          break;
-        }
-        const parentMapping = existingMappings.find(item =>
-          item.sourceRootId === mapping.sourceRootId && item.sourceIsFolder && item.sourceId === parent,
-        );
-        parent = parentMapping?.sourceParentId ?? null;
-      }
-      if (coveredByMissingFolder) continue;
-    }
-
-    if (destinationById.has(mapping.destinationId)) {
-      await providers.deleteSyncItem(mapping.destinationId);
-      summary.deletedItems += 1;
-      await recordEvent(mapping.relativePath, mapping.sourceIsFolder, "deleted",
-        "Managed SharePoint copy deleted because the source item no longer exists.");
-      deletionEvents.add(mapping.destinationId);
-      const destinationPath = destinationById.get(mapping.destinationId)?.path;
-      for (const [id, item] of destinationById) {
-        if (id === mapping.destinationId || (destinationPath && item.path.startsWith(`${destinationPath}/`))) {
-          deletedDestinationIds.add(id);
-          destinationById.delete(id);
-        }
-      }
-    }
-    } catch (error) {
-      await recordEvent(mapping.relativePath, mapping.sourceIsFolder, "failed", safeError(error));
-      throw error;
-    }
-  }
-  for (const mapping of staleMappings) {
-    if (deletionEvents.has(mapping.destinationId)) continue;
-    await recordEvent(mapping.relativePath, mapping.sourceIsFolder,
-      deletedDestinationIds.has(mapping.destinationId) ? "deleted" : "skipped",
-      deletedDestinationIds.has(mapping.destinationId)
-        ? "Deleted with its managed parent folder because the source folder no longer exists."
-        : "Source and SharePoint copy were already absent; the obsolete sync mapping was removed.");
-  }
-  if (deletedDestinationIds.size) {
-    await db.delete(syncSharepointItemsTable).where(and(
-      eq(syncSharepointItemsTable.driveId, driveId),
-      inArray(syncSharepointItemsTable.itemId, [...deletedDestinationIds]),
-    ));
-  }
-  destinationByPath.clear();
-  for (const [path, item] of rebuildDestinationPathIndex(destinationById)) destinationByPath.set(path, item);
-
-  if (staleMappings.length) {
-    await db.delete(syncItemsTable).where(inArray(syncItemsTable.id, staleMappings.map(mapping => mapping.id)));
-  }
-
   const refreshedMappings = await db.select().from(syncItemsTable).where(and(
     eq(syncItemsTable.destinationRootId, config.destinationFolderId),
     inArray(syncItemsTable.sourceRootId, sourceRootIds),
