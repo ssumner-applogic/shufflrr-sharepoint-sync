@@ -1039,6 +1039,80 @@ export const useSetSyncEnabled = <TError = ErrorType<ShufflrrErrorResponse>,
       return useMutation(getSetSyncEnabledMutationOptions(options), queryClient);
     }
 
+export const getRequestSyncNowUrl = () => {
+
+
+
+
+  return `/api/sync/run-now`
+}
+
+/**
+ * @summary Request an immediate run without changing the polling interval
+ */
+export const requestSyncNow = async ( options?: Parameters<typeof customFetch>[1]): Promise<SyncConfig> => {
+
+  return customFetch<SyncConfig>(getRequestSyncNowUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRequestSyncNowMutationKey = () => ['requestSyncNow'] as const;
+
+export const getRequestSyncNowMutationOptions = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestSyncNow>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestSyncNow>>, TError,void, TContext> => {
+
+const mutationKey = getRequestSyncNowMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestSyncNow>>, void> = () => {
+
+
+          return  requestSyncNow(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestSyncNowMutationResult = NonNullable<Awaited<ReturnType<typeof requestSyncNow>>>
+
+    export type RequestSyncNowMutationError = ErrorType<ShufflrrErrorResponse>
+
+
+    /**
+ * @summary Request an immediate run without changing the polling interval
+ */
+export const useRequestSyncNow = <TError = ErrorType<ShufflrrErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestSyncNow>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof requestSyncNow>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRequestSyncNowMutationOptions(options), queryClient);
+    }
+
 export const getDismissSyncOrphanUrl = (id: number,) => {
 
 

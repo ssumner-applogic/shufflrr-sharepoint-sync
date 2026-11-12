@@ -28,7 +28,7 @@ import { SYNC_LOCK_ID } from "../lib/sync-runner";
 import { ProviderBackoffError } from "@workspace/shufflrr/http-policy";
 import { exclusionNoticeKey, validateFolderExclusions } from "../lib/sync-exclusions";
 import { syncFailureRoutes } from "./sync-failures";
-import { setSyncEnabledState } from "../lib/sync-control";
+import { requestSyncNow, setSyncEnabledState } from "../lib/sync-control";
 
 const router: IRouter = Router();
 
@@ -367,6 +367,16 @@ router.put("/sync/enabled", async (req, res): Promise<void> => {
     const { db } = await import("@workspace/db");
     await setSyncEnabledState(db, parsed.data.enabled);
     res.json(await responseConfig());
+  } catch (error) {
+    operationError(req, res, error);
+  }
+});
+
+router.post("/sync/run-now", async (req, res): Promise<void> => {
+  try {
+    const { db } = await import("@workspace/db");
+    await requestSyncNow(db, SYNC_LOCK_ID);
+    res.status(202).json(await responseConfig());
   } catch (error) {
     operationError(req, res, error);
   }

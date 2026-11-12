@@ -17,6 +17,7 @@ import {
   getListShufflrrItemsQueryKey,
   listItems,
   listShufflrrItems,
+  requestSyncNow,
   saveSyncConfig,
   setSyncEnabled,
   setSyncInterval,
@@ -388,6 +389,14 @@ export function SyncAgent({ active }: { active: boolean }) {
     mutationFn: (pollIntervalSeconds: 1 | 5 | 30 | 60 | 300 | 3600) => setSyncInterval({ pollIntervalSeconds }),
     onSuccess: updated => queryClient.setQueryData(getGetSyncConfigQueryKey(), updated),
   });
+  const runNowMutation = useMutation({
+    mutationFn: () => requestSyncNow(),
+    onSuccess: async updated => {
+      await queryClient.cancelQueries({ queryKey: getGetSyncConfigQueryKey() });
+      queryClient.setQueryData(getGetSyncConfigQueryKey(), updated);
+      await queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() });
+    },
+  });
   const dismissMutation = useMutation({
     mutationFn: (id: number) => dismissSyncOrphan(id),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }); },
@@ -414,7 +423,8 @@ export function SyncAgent({ active }: { active: boolean }) {
   };
 
   const saveError = errorText(saveMutation.error);
-  const actionError = errorText(intervalMutation.error) ?? errorText(enabledMutation.error) ?? errorText(dismissMutation.error);
+  const actionError = errorText(intervalMutation.error) ?? errorText(enabledMutation.error) ??
+    errorText(runNowMutation.error) ?? errorText(dismissMutation.error);
   const configError = errorText(configQuery.error);
   const foldersLocked = !!config?.enabled || config?.lastRunStatus === "running";
   const canSave = !!destination && selected.size > 0 && Array.isArray(config?.excludedFolders) && !foldersLocked && !saveMutation.isPending && !intervalMutation.isPending;
@@ -442,6 +452,21 @@ export function SyncAgent({ active }: { active: boolean }) {
             </select>
             {intervalMutation.isPending && <Loader2 className="size-4 animate-spin" aria-label="Saving polling interval" />}
           </label>
+          <button
+            type="button"
+            onClick={() => runNowMutation.mutate()}
+            disabled={!config?.enabled || !config.configured || config.lastRunStatus === "running" ||
+              runNowMutation.isPending || saveMutation.isPending || intervalMutation.isPending || enabledMutation.isPending}
+            title={!config?.enabled ? "Start sync before requesting an immediate run."
+              : config.lastRunStatus === "running" ? "A sync run is already in progress."
+                : "Queue a full sync now; provider cooldowns are still respected."}
+            aria-busy={runNowMutation.isPending}
+            className="inline-flex items-center gap-2 rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-secondary disabled:opacity-50"
+            data-testid="button-sync-now"
+          >
+            <RefreshCw className={`size-4 ${runNowMutation.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+            {runNowMutation.isPending ? "Queueing…" : "Sync now"}
+          </button>
           <button
             type="button"
             onClick={() => refreshMutation.mutate()}

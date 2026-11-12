@@ -200,6 +200,22 @@ paths:
         "400": { $ref: "#/components/responses/ShufflrrError" }
         "401": { $ref: "#/components/responses/ShufflrrError" }
         "503": { $ref: "#/components/responses/ShufflrrError" }
+  /sync/run-now:
+    post:
+      operationId: requestSyncNow
+      summary: Request an immediate run without changing the polling interval
+      responses:
+        "202":
+          description: Run queued immediately, subject to provider cooldowns
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncConfig" }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "409":
+          description: Sync is paused or another run is active
+          $ref: "#/components/responses/ShufflrrError"
+        "503": { $ref: "#/components/responses/ShufflrrError" }
   /sync/orphans/{id}:
     delete:
       operationId: dismissSyncOrphan
