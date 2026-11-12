@@ -44,7 +44,7 @@ function Totals({ inventory, stale }: { inventory: SyncInventoryTotals; stale: b
       <div className="grid grid-cols-1 gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-2 lg:grid-cols-5">
         <Metric label="Shufflrr source files" value={countFormat.format(inventory.sourceFiles)} testId="text-dashboard-source-files"
           detail={`${mb(inventory.sourceBytes)}${partial ? " (known sizes only)" : ""}`} />
-        <Metric label="Synchronized to SharePoint" value={countFormat.format(inventory.synchronizedFiles)} tone="ok"
+        <Metric label="SHAREPOINT SNYCED" value={countFormat.format(inventory.synchronizedFiles)} tone="ok"
           testId="text-dashboard-synced-files" detail={`${mb(inventory.synchronizedBytes)} stored`} />
         <Metric label="Not yet synchronized" value={countFormat.format(inventory.notSynchronizedFiles)}
           tone={inventory.notSynchronizedFiles > 0 ? "warn" : undefined} testId="text-dashboard-not-synced-files"
