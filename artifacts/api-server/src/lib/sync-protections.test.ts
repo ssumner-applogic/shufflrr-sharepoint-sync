@@ -135,6 +135,42 @@ test("all six polling intervals validate, while unsupported values are rejected"
   }
 });
 
+test("one retry group processes only its three files and never deletes or logs unrelated copies", async () => {
+  const fixture = engineFixture([mapping(1, "1", "existing-folder", true), mapping(9, "99", "stale", false)], [
+    { ...item("existing-folder", "Source", "root", true), path: "Source" },
+    { ...item("stale", "removed.pdf", "existing-folder"), path: "Source/removed.pdf" },
+    { ...item("unrelated", "unrelated.pdf", "existing-folder"), path: "Source/unrelated.pdf" },
+  ]);
+  let scans = 0;
+  const downloads: number[] = [];
+  const client = sourceClient();
+  client.contents = async () => {
+    scans++;
+    return [sourceFile, { ...sourceFile, id: 6, name: "second.pdf" },
+      { ...sourceFile, id: 7, name: "third.pdf" }, { ...sourceFile, id: 8, name: "not-requested.pdf" }];
+  };
+  client.download = async id => {
+    downloads.push(id);
+    if (id === 3) throw new FileTransferError("Test item-local failure");
+    return new Response("abc");
+  };
+  const log = collectLog();
+  const result = await performSync(fixture.database, client, { ...engineConfig,
+    retryTargets: [3, 6, 7].map(sourceId => ({ sourceRootId: 1, sourceId })),
+  }, () => {}, fixture.providers, log);
+  assert.equal(scans, 1, "Discovery is shared by all three retries");
+  assert.deepEqual(downloads, [3, 6, 7]);
+  assert.deepEqual(result.summary.fileProgress, { totalFiles: 3, processedFiles: 3 });
+  assert.equal(result.summary.runKind, "retry");
+  assert.equal(result.summary.copiedFiles, 2);
+  assert.equal(result.failedFiles, 1);
+  assert.equal(result.summary.deletedItems, 0);
+  assert.equal(result.conflicts.length, 0, "Unrelated destination-only files do not add retry conflicts");
+  assert.ok(!fixture.calls.some(call => call.startsWith("delete:") || call.includes("not-requested")));
+  assert.ok(fixture.rows().some(row => row.sourceId === "99"));
+  assert.equal(result.summary.inventory, undefined, "A retry cannot replace the full-scope dashboard scan");
+});
+
 function engineFixture(seed: SyncItem[] = [], records: (SyncDriveItem & { path: string })[] = []) {
   let rows = [...seed];
   let writes = 0;
@@ -1000,7 +1036,11 @@ test("retry-all queues across pages atomically, preserves cooldowns and refuses 
     const url = `http://127.0.0.1:${address.port}/failures/retry-all`;
     const first = await fetch(url, { method: "POST" });
     assert.equal(first.status, 202);
-    assert.deepEqual(await first.json(), { queuedCount: 65, clearedCount: 65, retryAt: cooldown.toISOString() });
+    const accepted = RetryAllSyncFilesResponse.parse(await first.json());
+    assert.equal(accepted.queuedCount, 65);
+    assert.equal(accepted.clearedCount, 65);
+    assert.equal(accepted.retryAt.toISOString(), cooldown.toISOString());
+    assert.ok(accepted.queuedAt && Number.isFinite(accepted.queuedAt.getTime()));
     const update = statements.find(statement => statement.sql.includes("UPDATE"))!;
     assert.match(update.sql, /resolved_at.*is null/i);
     assert.match(update.sql, /dismissed_at.*is null/i);

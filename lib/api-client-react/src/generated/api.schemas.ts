@@ -35,6 +35,14 @@ export const SyncRunStatus = {
   failed: 'failed',
 } as const;
 
+export type SyncSummaryRunKind = typeof SyncSummaryRunKind[keyof typeof SyncSummaryRunKind];
+
+
+export const SyncSummaryRunKind = {
+  full: 'full',
+  retry: 'retry',
+} as const;
+
 export interface SyncFileProgress {
   /** @minimum 0 */
   totalFiles: number;
@@ -43,6 +51,7 @@ export interface SyncFileProgress {
 }
 
 export interface SyncSummary {
+  runKind?: SyncSummaryRunKind;
   /** @minimum 0 */
   createdFolders: number;
   /** @minimum 0 */
@@ -525,6 +534,7 @@ export type RetryAllSyncFiles202 = {
   queuedCount: number;
   clearedCount: number;
   retryAt: string;
+  queuedAt?: string;
 };
 
 export type GetSyncFailureSharePointLink200 = {

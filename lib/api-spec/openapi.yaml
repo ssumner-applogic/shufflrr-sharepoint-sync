@@ -192,6 +192,7 @@ paths:
                   queuedCount: { type: integer }
                   clearedCount: { type: integer }
                   retryAt: { type: string, format: date-time }
+                  queuedAt: { type: string, format: date-time }
         "409":
           description: A sync is currently running
   /sync/failures/{id}/sharepoint/{target}:
@@ -656,6 +657,7 @@ components:
       type: object
       required: [createdFolders, copiedFiles, updatedFiles, deletedItems, conflicts]
       properties:
+        runKind: { type: string, enum: [full, retry] }
         createdFolders: { type: integer, minimum: 0 }
         copiedFiles: { type: integer, minimum: 0 }
         updatedFiles: { type: integer, minimum: 0 }

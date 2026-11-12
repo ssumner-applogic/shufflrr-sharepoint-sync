@@ -20,7 +20,13 @@ export class SyncRunJournal implements SyncReporter {
   summary: SyncRunSummary | null = null;
   conflicts: SyncConflict[] = [];
   hasFailure = false;
-  constructor(private db: typeof import("@workspace/db")["db"], readonly runId: string) {}
+  constructor(private db: typeof import("@workspace/db")["db"], readonly runId: string, retryFileCount = 0) {
+    this.summary = {
+      runKind: retryFileCount ? "retry" : "full",
+      createdFolders: 0, copiedFiles: 0, updatedFiles: 0, deletedItems: 0, conflicts: 0,
+      ...(retryFileCount ? { fileProgress: { totalFiles: retryFileCount, processedFiles: 0 } } : {}),
+    };
+  }
 
   async start() {
     // Preserve the pre-upgrade last-known conflicts before the new run replaces the status banner.
@@ -57,7 +63,7 @@ export class SyncRunJournal implements SyncReporter {
       status: "failed", finishedAt: new Date(),
       error: "This run was interrupted before completion. Its recorded outcomes are shown below.",
     }).where(eq(syncRunsTable.status, "running"));
-    await this.db.insert(syncRunsTable).values({ id: this.runId });
+    await this.db.insert(syncRunsTable).values({ id: this.runId, summary: this.summary });
     // Only log metadata is pruned; never sync settings, mappings, or provider content.
     await this.db.execute(sql`DELETE FROM sync_runs WHERE id NOT IN
       (SELECT id FROM sync_runs ORDER BY started_at DESC, id DESC LIMIT 50)`);

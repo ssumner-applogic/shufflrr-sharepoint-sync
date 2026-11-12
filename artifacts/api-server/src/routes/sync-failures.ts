@@ -115,6 +115,7 @@ export function syncFailureRoutes(
   router.post("/retry-all", async (req, res) => {
     try {
       const db = await database();
+      const queuedAt = new Date();
       const result = await db.transaction(async tx => {
         const lock = await tx.execute(sql`SELECT pg_try_advisory_xact_lock(${SYNC_LOCK_ID}) AS locked`);
         if (!(lock.rows[0] as { locked?: boolean })?.locked)
@@ -123,7 +124,7 @@ export function syncFailureRoutes(
         // One atomic update covers every page, without requeueing already queued or dismissed notices.
         const updated = await tx.execute(sql`
           WITH queued AS (
-            UPDATE ${failures} SET retry_requested_at = now(), dismissed_at = now()
+            UPDATE ${failures} SET retry_requested_at = ${queuedAt}, dismissed_at = now()
             WHERE ${retryableScope(config)}
             RETURNING id
           ) SELECT count(*)::integer AS count FROM queued`);
@@ -133,6 +134,7 @@ export function syncFailureRoutes(
           .returning({ id: failures.id });
         return {
           queuedCount: Number(updated.rows[0]?.count ?? 0),
+          queuedAt: queuedAt.toISOString(),
           clearedCount: Number(updated.rows[0]?.count ?? 0) + cleared.length,
           retryAt: (config?.providerRetryAt && config.providerRetryAt > new Date()
             ? config.providerRetryAt : new Date()).toISOString(),

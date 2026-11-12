@@ -38,6 +38,7 @@ import {
   type SyncDriveItem,
 } from "./sharepoint";
 import { approvedOverwrite, fileRuleKey } from "./sync-file-rules";
+import { loadQueuedSyncRetries } from "./sync-retry-queue";
 
 export const SYNC_LOCK_ID = 74120937;
 const MAX_SOURCE_FOLDERS = 5_000;
@@ -348,6 +349,7 @@ export async function performSync(
   const mappedDestinationIds = new Set<string>();
   let failedFiles = 0;
   const summary: SyncRunSummary = {
+    runKind: retryKeys ? "retry" : "full",
     createdFolders: 0,
     copiedFiles: 0,
     updatedFiles: 0,
@@ -799,7 +801,7 @@ export async function performSync(
     ...deletedDestinationIds,
     ...excludedDestinationIds,
   ]);
-  for (const item of destinationById.values()) {
+  for (const item of retryKeys ? [] : destinationById.values()) {
     if (knownDestinationIds.has(item.id)) continue;
     let parentId = item.parentId;
     let coveredByUnknownFolder = false;
@@ -848,24 +850,7 @@ async function executeScheduledSync(): Promise<SyncResult> {
     const fileRules = config?.destinationFolderId ? await db.select().from(syncFileRulesTable)
       .where(eq(syncFileRulesTable.destinationRootId, config.destinationFolderId)) : [];
     controlUpdatedAt = config?.updatedAt;
-    const queued = await db.select().from(syncFileFailuresTable).where(and(
-      isNull(syncFileFailuresTable.resolvedAt), isNotNull(syncFileFailuresTable.retryRequestedAt),
-    )).orderBy(syncFileFailuresTable.id).limit(1);
-    for (const row of queued) {
-      const valid = config?.destinationFolderId === row.destinationRootId &&
-        !fileRules.some(rule => rule.action === "ignore" && rule.sourceRootId === row.sourceRootId && rule.sourceId === row.sourceId) &&
-        config.sourceFolders.some(folder => folder.id === row.sourceRootId) &&
-        !config.excludedFolders.some(folder => folder.rootId === row.sourceRootId && row.ancestorIds.includes(folder.id));
-      if (valid) {
-        pendingRetries.push(row);
-        // A new explicit attempt makes a dismissed notice visible again if the retry also fails.
-        if (row.dismissedAt) await db.update(syncFileFailuresTable)
-          .set({ dismissedAt: null }).where(eq(syncFileFailuresTable.id, row.id));
-      }
-      else await db.update(syncFileFailuresTable).set({ retryRequestedAt: null,
-        reason: "The sync scope changed. This file was not retried; adjust the selection or dismiss this notice." })
-        .where(eq(syncFileFailuresTable.id, row.id));
-    }
+    pendingRetries = await loadQueuedSyncRetries(db, config, fileRules);
     if (!config || (!config.enabled && !pendingRetries.length)) return { skipped: true, nextCheckMs: 5000 };
     if (config.providerRetryAt && config.providerRetryAt > new Date()) {
       pendingRetries = []; // Keep queued rows intact during a provider cooldown.
@@ -879,7 +864,7 @@ async function executeScheduledSync(): Promise<SyncResult> {
       throw new Error("The shared sync configuration is incomplete.");
     }
 
-    journal = new SyncRunJournal(db, runId);
+    journal = new SyncRunJournal(db, runId, pendingRetries.length);
     journal.fileFailures = new SyncFileFailureStore(db, config.destinationFolderId,
       new URL(shufflrrConfig().baseUrl).origin);
     await journal.start();
@@ -889,7 +874,7 @@ async function executeScheduledSync(): Promise<SyncResult> {
       lastRunAt: new Date(),
       lastRunStatus: "running",
       lastRunError: null,
-      lastRunSummary: null,
+      lastRunSummary: journal.summary,
       lastRunConflicts: [],
     }).where(eq(syncConfigTable.id, 1));
 

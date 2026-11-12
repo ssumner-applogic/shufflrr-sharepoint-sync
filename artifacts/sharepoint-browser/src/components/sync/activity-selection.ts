@@ -1,4 +1,13 @@
 /** The live job must remain visible even when history is pinned to an older run. */
+export function selectRequestedRetryRun<T extends { startedAt: string; summary: { runKind?: string } | null }>(
+  runs: T[], queuedAt: string | null,
+): T | null {
+  if (!queuedAt) return null;
+  const requested = Date.parse(queuedAt);
+  return runs.filter(run => run.summary?.runKind === "retry" && Date.parse(run.startedAt) >= requested)
+    .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))[0] ?? null;
+}
+
 export function selectRunningActivityRun<T extends { status: string }>(runs: T[]): T | null {
   return runs.find(run => run.status === "running") ?? null;
 }

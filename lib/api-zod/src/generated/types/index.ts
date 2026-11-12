@@ -63,3 +63,4 @@ export * from './syncRunStatus';
 export * from './syncSourceFolder';
 export * from './syncStatusCount';
 export * from './syncSummary';
+export * from './syncSummaryRunKind';

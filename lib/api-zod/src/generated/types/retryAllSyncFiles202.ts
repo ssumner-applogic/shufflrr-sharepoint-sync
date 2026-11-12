@@ -10,4 +10,5 @@ export type RetryAllSyncFiles202 = {
   queuedCount: number;
   clearedCount: number;
   retryAt: Date;
+  queuedAt?: Date;
 };

@@ -12,6 +12,7 @@ import {
   getGetSyncIgnoredFilesQueryKey,
   getGetSyncConfigQueryKey,
   getGetSyncDashboardQueryKey,
+  getGetSyncRunsQueryKey,
   type SyncFileFailure,
 } from "@workspace/api-client-react";
 import { groupSyncFailures } from "./failureGrouping";
@@ -98,7 +99,9 @@ function FailureItem({ file, compact, retry, dismiss, retryPending, dismissPendi
   </div>;
 }
 
-export function SyncFailureBanners({ active }: { active: boolean }) {
+export function SyncFailureBanners({ active, onRetryQueued }: {
+  active: boolean; onRetryQueued?: (queuedAt: string) => void;
+}) {
   const client = useQueryClient();
   const [after, setAfter] = useState<number | undefined>();
   const [previous, setPrevious] = useState<Array<number | undefined>>([]);
@@ -162,9 +165,13 @@ export function SyncFailureBanners({ active }: { active: boolean }) {
         `${result.queuedCount} file${result.queuedCount === 1 ? "" : "s"} queued for retry` +
         (cooldown ? ` after provider cooldown (${new Date(result.retryAt).toLocaleString()})` : "") +
         ". Automatic sync settings are unchanged.");
+      if (result.queuedCount > 0 && result.queuedAt) onRetryQueued?.(result.queuedAt);
       setAfter(undefined);
       setPrevious([]);
-      await refresh();
+      await Promise.all([refresh(),
+        client.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }),
+        client.invalidateQueries({ queryKey: getGetSyncRunsQueryKey() }),
+      ]);
     },
   });
   if (!active) return null;

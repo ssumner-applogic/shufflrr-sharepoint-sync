@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { selectActivityRun, selectRunningActivityRun } from "./activity-selection";
+import { selectActivityRun, selectRunningActivityRun, selectRequestedRetryRun } from "./activity-selection";
 import { ChevronDown, ChevronLeft, ChevronRight, History, Loader2 } from "lucide-react";
 import {
   getGetSyncRunEventsQueryKey,
@@ -97,7 +97,15 @@ function RunningFileProgress({ run }: { run: SyncRun | null }) {
   );
 }
 
-export function SyncActivityLog({ config, active }: { config: SyncConfig; active: boolean }) {
+function jobLabel(run: SyncRun) {
+  return run.summary?.runKind === "retry" ? "Retry failed files"
+    : run.summary?.runKind === "full" ? "Full sync" : "Sync";
+}
+
+export function SyncActivityLog({ config, active, retryQueuedAt = null, onRetrySelected }: {
+  config: SyncConfig; active: boolean;
+  retryQueuedAt?: string | null; onRetrySelected?: () => void;
+}) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
@@ -109,12 +117,23 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
     query: {
       queryKey: getGetSyncRunsQueryKey(),
       enabled: active,
-      refetchInterval: q => active && (config.enabled || q.state.data?.some(r => r.status === "running")) ? 2000 : false,
+      refetchInterval: q => active && (retryQueuedAt || config.enabled || q.state.data?.some(r => r.status === "running")) ? 2000 : false,
     },
   });
   const runs = useMemo(() => runsQuery.data ?? [], [runsQuery.data]);
-  const selectedRun = selectActivityRun(runs, runId, followLatest);
+  const requestedRetry = selectRequestedRetryRun(runs, retryQueuedAt);
+  const selectedRun = requestedRetry ?? selectActivityRun(runs, runId, followLatest && !retryQueuedAt);
   const effectiveRunId = selectedRun?.id ?? "";
+  useEffect(() => {
+    if (!retryQueuedAt) return;
+    setFollowLatest(false);
+    setOpen(true);
+    if (requestedRetry) {
+      setRunId(requestedRetry.id);
+      setFilter(null);
+      onRetrySelected?.();
+    }
+  }, [retryQueuedAt, requestedRetry?.id, onRetrySelected]);
   useEffect(() => {
     if (selectedRun && (runId === null || followLatest)) setRunId(selectedRun.id);
   }, [selectedRun?.id, runId, followLatest]);
@@ -185,7 +204,7 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
       {runningNow && (
         <div className="flex flex-wrap items-center gap-2 border-t bg-sky-50/60 px-4 py-3 text-xs" role="status" data-testid="sync-live-run-status">
           <div className="min-w-0">
-            <p className="font-medium text-sky-800">A sync is running. Wait for it to finish before starting another.</p>
+            <p className="font-medium text-sky-800">{activeRun ? `${jobLabel(activeRun)} is running.` : "A sync is running."} Wait for it to finish before starting another.</p>
             {activeRun && <p className="mt-1 text-muted-foreground">Started {fmt(activeRun.startedAt)}</p>}
           </div>
           <RunningFileProgress run={activeRun} />
@@ -196,6 +215,10 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
           )}
         </div>
       )}
+
+      {retryQueuedAt && !requestedRetry && <p role="status" className="border-t px-4 py-3 text-xs text-sky-800" data-testid="sync-retry-waiting">
+        Retry failed files queued. Waiting for the worker; provider cooldowns are respected. Results will open here.
+      </p>}
 
       {open && (
         <div className="space-y-3 border-t px-4 py-3">
@@ -237,7 +260,7 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
                     data-testid="select-sync-run"
                   >
                     {runs.map(r => (
-                      <option key={r.id} value={r.id}>{fmt(r.startedAt)} — {runMeta[r.status].label}</option>
+                      <option key={r.id} value={r.id}>{fmt(r.startedAt)} — {jobLabel(r)} — {runMeta[r.status].label}</option>
                     ))}
                   </select>
                 </label>
@@ -246,6 +269,13 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
                   {selectedRun.finishedAt ? ` · Finished ${fmt(selectedRun.finishedAt)}` : " · In progress"}
                 </span>
               </div>
+              {selectedRun.summary?.runKind === "retry" && (
+                <p className="text-xs font-medium" role="status" data-testid="sync-retry-result">
+                  Retry failed files · {runMeta[selectedRun.status].label}
+                  {selectedRun.summary.fileProgress && ` · ${selectedRun.summary.fileProgress.processedFiles} / ${selectedRun.summary.fileProgress.totalFiles} files processed`}
+                  {selectedRun.status !== "running" && " · Results kept selected; later scheduled syncs appear separately."}
+                </p>
+              )}
               {selectedRun.status !== "success" && selectedRun.status !== "running" && (
                 <p className="text-xs text-muted-foreground">
                   This run finished but did not complete every item. Items listed as copied, updated or created were still applied.

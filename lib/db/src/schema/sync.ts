@@ -28,6 +28,8 @@ export interface SyncConflict {
 }
 
 export interface SyncRunSummary {
+  /** Optional for pre-upgrade history. Stored inside existing summary JSON. */
+  runKind?: "full" | "retry";
   createdFolders: number;
   copiedFiles: number;
   updatedFiles: number;

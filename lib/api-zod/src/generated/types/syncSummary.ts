@@ -6,8 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SyncFileProgress } from './syncFileProgress';
+import type { SyncSummaryRunKind } from './syncSummaryRunKind';
 
 export interface SyncSummary {
+  runKind?: SyncSummaryRunKind;
   /** @minimum 0 */
   createdFolders: number;
   /** @minimum 0 */

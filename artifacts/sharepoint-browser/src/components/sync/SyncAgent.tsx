@@ -331,6 +331,7 @@ function ConfigStatus({ config }: { config: SyncConfig }) {
 }
 
 export function SyncAgent({ active }: { active: boolean }) {
+  const [retryQueuedAt, setRetryQueuedAt] = useState<string | null>(null);
   const configTriggerRef = useRef<HTMLButtonElement>(null);
   const queryClient = useQueryClient();
   const configQuery = useQuery({
@@ -582,9 +583,10 @@ export function SyncAgent({ active }: { active: boolean }) {
       )}
       {config && <SyncDashboard active={active} config={config} reviewIgnored={reviewIgnored} />}
       {config && <ConfigStatus config={config} />}
-      {config && <SyncFailureBanners active={active} />}
+      {config && <SyncFailureBanners active={active} onRetryQueued={setRetryQueuedAt} />}
       {config && <SyncIgnoredFiles active={active} open={ignoredOpen} setOpen={setIgnoredOpen} running={config.lastRunStatus === "running"} />}
-      {config && <SyncActivityLog config={config} active={active} />}
+      {config && <SyncActivityLog config={config} active={active}
+        retryQueuedAt={retryQueuedAt} onRetrySelected={() => setRetryQueuedAt(null)} />}
       {config?.enabled && <p className="text-xs text-muted-foreground">Pause sync before changing its folders.</p>}
       {!config?.enabled && config?.lastRunStatus === "running" &&
         <p className="text-xs text-muted-foreground" role="status">Pause saved. Active work will finish safely before stopping; folder settings stay locked until it finishes.</p>}

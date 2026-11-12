@@ -10,3 +10,4 @@
 - [File ignore policy](sync-file-rule-policy.md) — ignored files must remain discoverable; re-enabling never grants overwrite permission.
 - [Neon worker locks](neon-worker-locks.md) — transaction pooling requires transaction-scoped run locks; old session locks can remain stranded.
 - [Sync control timestamps](sync-control-timestamps.md) — worker status writes must not masquerade as newer Start or Sync now requests.
+- [Grouped retry behavior](sync-retry-behavior.md) — one targeted retry job per queued group; keep its results selected when later full syncs start.

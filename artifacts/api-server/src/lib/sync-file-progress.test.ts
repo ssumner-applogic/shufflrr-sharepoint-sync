@@ -20,10 +20,12 @@ test("the activity-log API schema preserves live run progress", () => {
     finishedAt: null,
     status: "running",
     summary: {
+      runKind: "retry",
       createdFolders: 0, copiedFiles: 1, updatedFiles: 0, deletedItems: 0, conflicts: 0,
       fileProgress: { totalFiles: 10, processedFiles: 4 },
     },
     error: null,
   }]);
   assert.deepEqual(runs[0].summary?.fileProgress, { totalFiles: 10, processedFiles: 4 });
+  assert.equal(runs[0].summary?.runKind, "retry");
 });

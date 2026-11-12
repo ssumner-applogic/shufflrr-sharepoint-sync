@@ -33,6 +33,7 @@ export const GetSyncRunsResponseItem = zod.object({
   "finishedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['running', 'success', 'partial', 'failed']),
   "summary": zod.union([zod.object({
+  "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(getSyncRunsResponseSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(getSyncRunsResponseSummaryOneCopiedFilesMin),
   "updatedFiles": zod.number().int().min(getSyncRunsResponseSummaryOneUpdatedFilesMin),
@@ -184,6 +185,7 @@ export const GetSyncConfigResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
+  "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneCopiedFilesMin),
   "updatedFiles": zod.number().int().min(getSyncConfigResponseLastRunSummaryOneUpdatedFilesMin),
@@ -298,6 +300,7 @@ export const SaveSyncConfigResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
+  "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneCopiedFilesMin),
   "updatedFiles": zod.number().int().min(saveSyncConfigResponseLastRunSummaryOneUpdatedFilesMin),
@@ -423,6 +426,7 @@ export const DisconnectSyncResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
+  "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(disconnectSyncResponseLastRunSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(disconnectSyncResponseLastRunSummaryOneCopiedFilesMin),
   "updatedFiles": zod.number().int().min(disconnectSyncResponseLastRunSummaryOneUpdatedFilesMin),
@@ -498,7 +502,8 @@ export const GetSyncFailuresResponse = zod.object({
 export const RetryAllSyncFilesResponse = zod.object({
   "queuedCount": zod.number().int(),
   "clearedCount": zod.number().int(),
-  "retryAt": zod.coerce.date()
+  "retryAt": zod.coerce.date(),
+  "queuedAt": zod.coerce.date().optional()
 })
 
 
@@ -605,6 +610,7 @@ export const SetSyncIntervalResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
+  "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneCopiedFilesMin),
   "updatedFiles": zod.number().int().min(setSyncIntervalResponseLastRunSummaryOneUpdatedFilesMin),
@@ -686,6 +692,7 @@ export const SetSyncEnabledResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
+  "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneCopiedFilesMin),
   "updatedFiles": zod.number().int().min(setSyncEnabledResponseLastRunSummaryOneUpdatedFilesMin),
@@ -763,6 +770,7 @@ export const RequestSyncNowResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullable(),
   "lastRunStatus": zod.union([zod.literal('running'),zod.literal('success'),zod.literal('partial'),zod.literal('failed'),zod.literal(null)]).nullable(),
   "lastRunSummary": zod.union([zod.object({
+  "runKind": zod.enum(['full', 'retry']).optional(),
   "createdFolders": zod.number().int().min(requestSyncNowResponseLastRunSummaryOneCreatedFoldersMin),
   "copiedFiles": zod.number().int().min(requestSyncNowResponseLastRunSummaryOneCopiedFilesMin),
   "updatedFiles": zod.number().int().min(requestSyncNowResponseLastRunSummaryOneUpdatedFilesMin),
