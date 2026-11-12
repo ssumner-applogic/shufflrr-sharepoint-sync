@@ -143,17 +143,20 @@ export function SyncFailureBanners({ active }: { active: boolean }) {
   const retryFile = (id: number) => { dismiss.reset(); retry.mutate(id); };
   const dismissFile = (id: number) => { retry.reset(); dismiss.mutate(id); };
 
-  return <section className="space-y-2" aria-label="Files needing attention" data-testid="sync-file-failures">
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <details open={!collapsed} onToggle={event => setCollapsed(!event.currentTarget.open)} className="min-w-0 flex-1">
-        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <ChevronDown className={`size-4 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`} aria-hidden="true" />
-          <span>{data.total ? `${data.total} file${data.total === 1 ? "" : "s"} needing attention` : "File attention"}</span>
-          {data.total > 0 && <span className="text-xs font-normal text-muted-foreground">
-            Showing {data.failures.length}: {needsAction.length} with issues{skipped.length > 0 && ` · ${skipped.length} not attempted`}
-          </span>}
-        </summary>
-      </details>
+  return <section className="overflow-hidden rounded-md border bg-card" aria-label="Files needing attention" data-testid="sync-file-failures">
+    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+      <button type="button"
+        aria-expanded={!collapsed}
+        aria-controls="sync-failure-panel-content"
+        data-testid="button-toggle-sync-failures"
+        onClick={() => setCollapsed(value => !value)}
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded text-left hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <ChevronDown className={`size-4 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`} aria-hidden="true" />
+        <span className="text-sm font-medium">{data.total ? `${data.total} file${data.total === 1 ? "" : "s"} needing attention` : "File attention"}</span>
+        {data.total > 0 && <span className="text-xs font-normal text-muted-foreground">
+          Showing {data.failures.length}: {needsAction.length} with issues{skipped.length > 0 && ` · ${skipped.length} not attempted`}
+        </span>}
+      </button>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" data-testid="button-retry-all-sync-files"
           disabled={!data.canRetryAll || retryAll.isPending || retry.isPending || dismiss.isPending || clearAll.isPending}
@@ -173,8 +176,8 @@ export function SyncFailureBanners({ active }: { active: boolean }) {
         </button>
       </div>
     </div>
-    {bulkMessage && <p role="status" className="text-xs text-muted-foreground">{bulkMessage}</p>}
-    {!collapsed && <div className="space-y-2" data-testid="sync-failure-panel-content">
+    {bulkMessage && <p role="status" className="border-t px-4 py-2 text-xs text-muted-foreground">{bulkMessage}</p>}
+    {!collapsed && <div id="sync-failure-panel-content" className="space-y-2 border-t bg-card p-3" data-testid="sync-failure-panel-content">
     {needsAction.map(file => <FailureItem key={file.id} file={file} retry={retryFile} dismiss={dismissFile}
       retryPending={retryAll.isPending || (retry.isPending && retry.variables === file.id)} dismissPending={dismiss.isPending} queued={queued} />)}
     {skipped.length > 0 && <details className="rounded-lg border border-muted-foreground/25 bg-muted/20 p-3"
