@@ -6,12 +6,19 @@ const busy = Object.assign(new Error("HTTP 409 Conflict: A sync is already runni
 
 test("a fresh completion clears the old busy warning for every terminal outcome", () => {
   for (const status of ["success", "partial", "failed"])
-    assert.equal(shouldClearBusySyncError(busy, status, 200, 100), true);
+    assert.equal(shouldClearBusySyncError(busy, status, 200, 100, new Date(150).toISOString()), true);
 });
 
 test("a stale completed status cannot hide a new busy rejection", () => {
   assert.equal(shouldClearBusySyncError(busy, "partial", 90, 100), false);
   assert.equal(shouldClearBusySyncError(busy, "partial", 100, 100), false);
+});
+
+test("refetching a previously completed run keeps a new lock rejection visible", () => {
+  assert.equal(shouldClearBusySyncError(busy, "partial", 200, 100, new Date(90).toISOString()), false);
+  assert.equal(shouldClearBusySyncError(busy, "partial", 200, 100, new Date(100).toISOString()), false);
+  assert.equal(shouldClearBusySyncError(busy, "partial", 200, 100), false);
+  assert.equal(shouldClearBusySyncError(busy, "partial", 200, 100, "invalid"), false);
 });
 
 test("an active or unknown job keeps the busy guidance", () => {

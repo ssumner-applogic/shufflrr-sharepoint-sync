@@ -4,9 +4,12 @@ export function shouldClearBusySyncError(
   lastRunStatus: string | null | undefined,
   statusFetchedAt: number,
   requestSubmittedAt: number,
+  lastRunAt?: string | null,
 ): boolean {
   return error instanceof Error && "status" in error && error.status === 409 &&
     error.message.includes("A sync is already running.") &&
     ["success", "partial", "failed"].includes(lastRunStatus ?? "") &&
+    // Refetching an old terminal run does not prove the busy lock was released.
+    Date.parse(lastRunAt ?? "") > requestSubmittedAt &&
     statusFetchedAt > requestSubmittedAt;
 }

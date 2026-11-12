@@ -427,9 +427,9 @@ export function SyncAgent({ active }: { active: boolean }) {
   });
   useEffect(() => {
     if (shouldClearBusySyncError(runNowMutation.error, config?.lastRunStatus,
-      configQuery.dataUpdatedAt, runNowMutation.submittedAt)) runNowMutation.reset();
+      configQuery.dataUpdatedAt, runNowMutation.submittedAt, config?.lastRunAt)) runNowMutation.reset();
   }, [runNowMutation.error, runNowMutation.reset, runNowMutation.submittedAt,
-    config?.lastRunStatus, configQuery.dataUpdatedAt]);
+    config?.lastRunStatus, config?.lastRunAt, configQuery.dataUpdatedAt]);
   const dismissMutation = useMutation({
     mutationFn: (id: number) => dismissSyncOrphan(id),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: getGetSyncConfigQueryKey() }); },
