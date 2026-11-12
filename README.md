@@ -81,6 +81,19 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for Railway and Google Cloud Run setup, healt
 
 ## Continuous Shufflrr sync
 
+### Scheduling and activity review
+
+The saved polling interval is measured from completion of the previous run. The dispatcher may check the database once a second, but it must not scan the providers before the next due time. Worker status writes preserve the user-control timestamp, so they cannot accidentally request another immediate run. Actual Start/Sync now requests made during a run and provider-directed cooldowns are retained.
+
+The activity log pins its initially displayed run by default. **View latest run** switches once; **Follow latest run** explicitly opts into switching on every new run. Selecting a specific run turns following off. Counts and the progress bar refer to that selected run, and final event updates retain cached entries instead of clearing the list. A separate notice identifies another running job without replacing the selected history.
+
+An in-process guard and a transaction-scoped database advisory lock protect the worker. Start/finish logs include the run request ID and a per-process worker instance ID to diagnose any unexpected second execution source. This does not assume Railway is running.
+
+Regression checks:
+- `pnpm --filter @workspace/api-server run test:sync`
+- `pnpm test:sync-selection`
+- `pnpm --filter @workspace/api-server run test:sync-postgres` — explicit database verification using a temporary table, rollback, and an isolated test-lock namespace; no saved sync settings or provider files are modified.
+
 ### Resolving file conflicts and persistent ignores
 
 File attention provides **Overwrite and sync** and **Ignore** actions per file and for selected conflicts. Overwrite requires confirmation and records approval for the current SharePoint item/version, not a successful mapping. The next run conditionally uploads the source and records ownership only after verification; a replaced destination, a folder, or a copy owned by another source is never adopted by this action. Approval alone does not start a run. **Review dismissed notices** makes previously hidden conflicts available for resolution.

@@ -1,5 +1,7 @@
 import { and, eq, inArray, notInArray, isNull, isNotNull, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
+import { createSyncRunGate } from "./sync-run-gate";
+import { nextSyncAfterCompletion, preserveSyncControlTimestamp } from "./sync-scheduling";
 import { logger } from "./logger";
 import { ProviderBackoffError } from "@workspace/shufflrr/http-policy";
 import { loadDestinationSnapshot } from "./sharepoint-snapshot";
@@ -247,18 +249,14 @@ async function saveRunState(
   },
 ): Promise<void> {
   await db.update(syncConfigTable).set({
+    updatedAt: preserveSyncControlTimestamp(),
     lastRunAt: new Date(),
     lastRunStatus: values.status,
     lastRunSummary: values.summary,
     lastRunConflicts: values.conflicts,
     lastRunError: values.error,
     // Preserve a newer Start request, including a pause/start during this run.
-    nextRunAt: values.controlUpdatedAt
-      ? sql`case when ${syncConfigTable.enabled}
-          and date_trunc('milliseconds', ${syncConfigTable.updatedAt}) > ${values.controlUpdatedAt}::timestamptz
-          then greatest(coalesce(${syncConfigTable.nextRunAt}, now()), ${values.retryAt ?? new Date(0)}::timestamptz)
-          else greatest(now() + ${syncConfigTable.pollIntervalSeconds} * interval '1 second', ${values.retryAt ?? new Date(0)}::timestamptz) end`
-      : sql`greatest(now() + ${syncConfigTable.pollIntervalSeconds} * interval '1 second', ${values.retryAt ?? new Date(0)}::timestamptz)`,
+    nextRunAt: nextSyncAfterCompletion(values.controlUpdatedAt, values.retryAt),
     providerRetryAt: values.retryAt ?? null,
   }).where(eq(syncConfigTable.id, 1));
 }
@@ -795,7 +793,10 @@ export async function performSync(
   return { summary, conflicts, failedFiles };
 }
 
-export async function runScheduledSync(): Promise<SyncResult> {
+const workerInstanceId = randomUUID();
+export const runScheduledSync = createSyncRunGate<SyncResult>(executeScheduledSync, () => ({ skipped: true }));
+
+async function executeScheduledSync(): Promise<SyncResult> {
   const { db, pool } = await import("@workspace/db");
   const lockConnection = await pool.connect();
   let locked = false;
@@ -857,7 +858,9 @@ export async function runScheduledSync(): Promise<SyncResult> {
     journal.fileFailures = new SyncFileFailureStore(db, config.destinationFolderId,
       new URL(shufflrrConfig().baseUrl).origin);
     await journal.start();
+    logger.info({ event: "sync_run_started", requestId: runId, workerInstanceId }, "Sync run started.");
     await db.update(syncConfigTable).set({
+      updatedAt: preserveSyncControlTimestamp(),
       lastRunAt: new Date(),
       lastRunStatus: "running",
       lastRunError: null,
@@ -893,6 +896,7 @@ export async function runScheduledSync(): Promise<SyncResult> {
       controlUpdatedAt,
     });
     await journal.finish(status, partialError);
+    logger.info({ event: "sync_run_finished", requestId: runId, workerInstanceId, status }, "Sync run finished.");
     return { skipped: false, status, summary: outcome.summary, nextCheckMs: Math.min(5000, intervalSeconds * 1000) };
   } catch (error) {
     if (error instanceof SyncPauseRequested && journal) {

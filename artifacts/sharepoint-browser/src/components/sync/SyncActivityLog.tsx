@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { selectActivityRun } from "./activity-selection";
 import { ChevronDown, ChevronLeft, ChevronRight, History, Loader2 } from "lucide-react";
 import {
   getGetSyncRunEventsQueryKey,
@@ -96,8 +98,10 @@ function RunningFileProgress({ run }: { run: SyncRun }) {
 }
 
 export function SyncActivityLog({ config, active }: { config: SyncConfig; active: boolean }) {
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
+  const [followLatest, setFollowLatest] = useState(false);
   const [filter, setFilter] = useState<SyncEventStatus | null>(null);
   const [cursors, setCursors] = useState<number[]>([]);
 
@@ -109,8 +113,20 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
     },
   });
   const runs = useMemo(() => runsQuery.data ?? [], [runsQuery.data]);
-  const selectedRun = runs.find(r => r.id === runId) ?? runs[0] ?? null;
+  const selectedRun = selectActivityRun(runs, runId, followLatest);
   const effectiveRunId = selectedRun?.id ?? "";
+  useEffect(() => {
+    if (selectedRun && (runId === null || followLatest)) setRunId(selectedRun.id);
+  }, [selectedRun?.id, runId, followLatest]);
+  const previousRun = useRef<{ id: string; status: SyncRun["status"] } | null>(null);
+  useEffect(() => {
+    const previous = previousRun.current;
+    if (selectedRun && previous?.id === selectedRun.id && previous.status === "running" && selectedRun.status !== "running") {
+      // Refresh final counts without throwing away the running run's cached entries.
+      void queryClient.invalidateQueries({ queryKey: getGetSyncRunEventsQueryKey({ runId: selectedRun.id }) });
+    }
+    previousRun.current = selectedRun ? { id: selectedRun.id, status: selectedRun.status } : null;
+  }, [selectedRun?.id, selectedRun?.status, queryClient]);
 
   useEffect(() => { setCursors([]); }, [effectiveRunId, filter]);
 
@@ -122,7 +138,7 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
   };
   const eventsQuery = useGetSyncRunEvents(params, {
     query: {
-      queryKey: [...getGetSyncRunEventsQueryKey(params), selectedRun?.status ?? null, selectedRun?.finishedAt ?? null] as unknown as ReturnType<typeof getGetSyncRunEventsQueryKey>,
+      queryKey: getGetSyncRunEventsQueryKey(params),
       enabled: active && open && !!effectiveRunId,
       refetchInterval: active && open && selectedRun?.status === "running" ? 1500 : false,
     },
@@ -141,7 +157,7 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
     ? config.lastRunConflicts : [];
 
   const activeRun = runs.find(r => r.status === "running") ?? null;
-  const runningNow = !!activeRun;
+  const runningNow = selectedRun?.status === "running";
 
   return (
     <section className="rounded-md border bg-card" aria-labelledby="sync-activity-heading" data-testid="sync-activity-log">
@@ -155,10 +171,10 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
         {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
         <History className="size-4 text-muted-foreground" aria-hidden="true" />
         <span id="sync-activity-heading" className="text-sm font-medium">Activity log</span>
-        {activeRun && <Badge tone={runMeta.running.tone}>{runMeta.running.label}</Badge>}
-        {!activeRun && selectedRun && <Badge tone={runMeta[selectedRun.status].tone}>{runMeta[selectedRun.status].label}</Badge>}
+        {selectedRun && <Badge tone={runMeta[selectedRun.status].tone}>{runMeta[selectedRun.status].label}</Badge>}
         {runningNow && <Loader2 className="size-3.5 animate-spin text-sky-700" aria-label="Run in progress" />}
-        {activeRun && <RunningFileProgress run={activeRun} />}
+        {runningNow && selectedRun && <RunningFileProgress run={selectedRun} />}
+        {activeRun && activeRun.id !== effectiveRunId && <span className="text-xs text-sky-700">Another run is in progress</span>}
         <span className="ml-auto text-xs text-muted-foreground">
           {runsQuery.isLoading ? "Loading runs…" : `${runs.length} run${runs.length === 1 ? "" : "s"} (latest 50 kept)`}
           {legacy.length > 0 && ` · ${legacy.length} legacy item${legacy.length === 1 ? "" : "s"}`}
@@ -167,6 +183,18 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
 
       {open && (
         <div className="space-y-3 border-t px-4 py-3">
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={followLatest} onChange={event => setFollowLatest(event.target.checked)}
+                data-testid="checkbox-follow-latest-run" />
+              Follow latest run
+            </label>
+            <span className="text-muted-foreground">{followLatest ? "Switches to each new run; progress restarts for that run." : "Viewing a fixed run; new runs will not reset this log."}</span>
+            {!!runs.length && runs[0].id !== effectiveRunId && <button type="button" className="rounded border px-2 py-1"
+              onClick={() => { setRunId(runs[0].id); setFollowLatest(false); }}
+              data-testid="button-view-latest-sync-run">View latest run</button>}
+          </div>
+          {!!runId && !selectedRun && <p className="text-xs text-muted-foreground">The selected run is no longer in retained history. Choose View latest run to continue.</p>}
           {runsQuery.isError && (
             <div className="flex items-center gap-2 text-sm text-destructive" role="alert">
               Could not load sync runs.
@@ -188,7 +216,7 @@ export function SyncActivityLog({ config, active }: { config: SyncConfig; active
                   Run
                   <select
                     value={selectedRun.id}
-                    onChange={e => setRunId(e.target.value)}
+                    onChange={e => { setRunId(e.target.value); setFollowLatest(false); }}
                     className="h-8 max-w-[22rem] rounded-md border bg-card px-2 text-xs text-foreground"
                     data-testid="select-sync-run"
                   >
