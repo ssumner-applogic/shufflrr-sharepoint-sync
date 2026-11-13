@@ -652,8 +652,8 @@ export function SyncAgent({ active }: { active: boolean }) {
             <button type="button" className="font-medium underline" onClick={reviewIgnored}>Review ignored files</button>
           </div>
           <div className="flex shrink-0 items-center gap-2 border-b px-4 py-3 text-sm">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={treatArchivedAsDeleted} disabled={foldersLocked || saveMutation.isPending}
+            <label className="flex items-center gap-2" title={foldersLocked ? "Pause Sync to enable" : undefined}>
+              <input type="checkbox" className="disabled:pointer-events-none" checked={treatArchivedAsDeleted} disabled={foldersLocked || saveMutation.isPending}
                 onChange={event => setTreatArchivedAsDeleted(event.target.checked)} data-testid="toggle-treat-archived-as-deleted" />
               Treat archived files as deleted
             </label>
