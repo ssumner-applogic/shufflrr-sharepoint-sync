@@ -38,11 +38,12 @@ type FileLink = { href: string; download?: string; external?: boolean };
 
 export function TreeItem({
   treeKey, level, name, isFolder, expanded, onToggle, size, modifiedAt, fileLink, testId, children,
-  selected, onSelect, selectionDisabled, archived,
+  selected, onSelect, selectionDisabled, archived, actions,
 }: {
   treeKey: string; level: number; name: string; isFolder: boolean; expanded: boolean;
   onToggle: (key: string) => void; size?: number; modifiedAt: string; fileLink?: FileLink; testId: string; children?: ReactNode;
   selected?: boolean; onSelect?: (selected: boolean) => void; selectionDisabled?: boolean; archived?: boolean;
+  actions?: ReactNode;
 }) {
   const kind = isFolder ? "folder" : "file";
   return (
@@ -107,6 +108,7 @@ export function TreeItem({
         {archived && <span className="shrink-0 rounded border px-1.5 text-[11px]" aria-label="Archived in Shufflrr">Archived</span>}
         <span className="hidden w-20 shrink-0 text-right font-mono text-xs text-muted-foreground sm:block">{isFolder || size === undefined ? "" : fmtSize(size)}</span>
         <span className="hidden w-40 shrink-0 text-right font-mono text-xs text-muted-foreground md:block">{fmtDate(modifiedAt)}</span>
+        {actions}
         <span className="grid size-4 shrink-0 place-items-center text-muted-foreground" aria-hidden="true">
           {fileLink && (fileLink.external ? <ExternalLink className="size-3.5 opacity-60 group-hover:opacity-100" /> : <Download className="size-3.5" />)}
         </span>

@@ -2,6 +2,8 @@
 
 ## Independent Shufflrr metadata capture
 
+Both file browsers include an information icon on file rows. It opens a read-only modal containing the captured Shufflrr metadata, source activity dates, original-file dates, and snapshot freshness. Shufflrr lookup uses the numeric source file ID; SharePoint lookup uses the actual item ID in the server-configured drive, never the filename. The modal fetches only while open and refreshes every 30 seconds. Files without a captured snapshot in the current sync scope show an explicit empty state; this action does not crawl source files or modify SharePoint.
+
 The **Metadata activity** panel below file-sync activity has its own refresh button,
 progress, run history and per-file log. Select an event, or enter a SharePoint drive
 ID and item ID, to look up its protected Neon snapshot. This does not edit

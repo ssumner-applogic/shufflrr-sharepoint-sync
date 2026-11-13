@@ -40,6 +40,7 @@ import type {
   LibraryItem,
   ListItemsParams,
   ListShufflrrItemsParams,
+  LookupFileMetadataParams,
   MetadataEventPage,
   MetadataStatus,
   RequestMetadataRefresh202,
@@ -469,6 +470,115 @@ export function useGetFileMetadata<TData = Awaited<ReturnType<typeof getFileMeta
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetFileMetadataQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getLookupFileMetadataUrl = (params?: LookupFileMetadataParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/sync/metadata/lookup?${stringifiedParams}` : `/api/sync/metadata/lookup`
+}
+
+/**
+ * Supply exactly one of sourceFileId or itemId. SharePoint items belong to the configured library.
+ * @summary Look up captured Shufflrr metadata from a browser file identity
+ */
+export const lookupFileMetadata = async (params?: LookupFileMetadataParams, options?: Parameters<typeof customFetch>[1]): Promise<FileMetadataRecord> => {
+
+  return customFetch<FileMetadataRecord>(getLookupFileMetadataUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getLookupFileMetadataQueryKey = (params?: LookupFileMetadataParams,) => {
+    return [
+    `/api/sync/metadata/lookup`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getLookupFileMetadataQueryOptions = <TData = Awaited<ReturnType<typeof lookupFileMetadata>>, TError = ErrorType<ShufflrrErrorResponse>>(params?: LookupFileMetadataParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof lookupFileMetadata>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getLookupFileMetadataQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof lookupFileMetadata>>> = ({ signal }) => lookupFileMetadata(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof lookupFileMetadata>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type LookupFileMetadataQueryResult = NonNullable<Awaited<ReturnType<typeof lookupFileMetadata>>>
+export type LookupFileMetadataQueryError = ErrorType<ShufflrrErrorResponse>
+
+
+export function useLookupFileMetadata<TData = Awaited<ReturnType<typeof lookupFileMetadata>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params: undefined |  LookupFileMetadataParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof lookupFileMetadata>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof lookupFileMetadata>>,
+          TError,
+          Awaited<ReturnType<typeof lookupFileMetadata>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useLookupFileMetadata<TData = Awaited<ReturnType<typeof lookupFileMetadata>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params?: LookupFileMetadataParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof lookupFileMetadata>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof lookupFileMetadata>>,
+          TError,
+          Awaited<ReturnType<typeof lookupFileMetadata>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useLookupFileMetadata<TData = Awaited<ReturnType<typeof lookupFileMetadata>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params?: LookupFileMetadataParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof lookupFileMetadata>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Look up captured Shufflrr metadata from a browser file identity
+ */
+
+export function useLookupFileMetadata<TData = Awaited<ReturnType<typeof lookupFileMetadata>>, TError = ErrorType<ShufflrrErrorResponse>>(
+ params?: LookupFileMetadataParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof lookupFileMetadata>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getLookupFileMetadataQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

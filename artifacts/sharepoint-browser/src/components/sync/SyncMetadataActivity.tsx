@@ -13,8 +13,8 @@ import {
   type GetMetadataEventsParams,
   type MetadataEventStatus,
   type MetadataRun,
-  type SourceMetadata,
 } from "@workspace/api-client-react";
+import { MetadataDetails } from "@/components/metadata/MetadataDetails";
 
 const PAGE_SIZE = 25;
 
@@ -44,46 +44,6 @@ function Badge({ tone, children }: { tone: string; children: ReactNode }) {
   return <span className={`inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[11px] font-medium leading-none ${tone}`}>{children}</span>;
 }
 
-type FieldDef = { key: keyof SourceMetadata; label: string; kind?: "date" | "bytes" };
-const groups: { title: string; note?: string; fields: FieldDef[] }[] = [
-  { title: "Common", fields: [
-    { key: "name", label: "Name" }, { key: "description", label: "Description" }, { key: "fileType", label: "File type" },
-    { key: "extension", label: "Extension" }, { key: "size", label: "Size", kind: "bytes" }, { key: "author", label: "Author" },
-    { key: "folderName", label: "Folder" }, { key: "parentFolderId", label: "Parent folder ID" }, { key: "portalId", label: "Portal ID" },
-    { key: "id", label: "Shufflrr file ID" }, { key: "source", label: "Source" }, { key: "sourceId", label: "Source ID" },
-  ] },
-  { title: "Activity in Shufflrr", note: "Who and when inside Shufflrr.", fields: [
-    { key: "createdDate", label: "Created", kind: "date" }, { key: "createdByName", label: "Created by" },
-    { key: "createdByEmail", label: "Created by email" }, { key: "createdById", label: "Created by ID" },
-    { key: "modifiedDate", label: "Modified", kind: "date" }, { key: "modifiedByName", label: "Modified by" },
-    { key: "modifiedById", label: "Modified by ID" },
-  ] },
-  { title: "Original file dates", note: "As reported by the source file.", fields: [
-    { key: "fileCreatedDate", label: "File created", kind: "date" }, { key: "fileModifiedDate", label: "File modified", kind: "date" },
-  ] },
-];
-
-function renderValue(v: unknown, kind?: FieldDef["kind"]) {
-  if (v === undefined) return <span className="italic text-muted-foreground/70">Not reported</span>;
-  if (v === null || v === "") return <span className="italic text-muted-foreground/70">Not provided</span>;
-  if (kind === "date") return fmt(String(v));
-  if (kind === "bytes" && typeof v === "number") return `${v.toLocaleString()} bytes`;
-  return String(v);
-}
-
-function Dl({ rows }: { rows: [string, ReactNode][] }) {
-  return (
-    <dl className="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-1 text-xs">
-      {rows.map(([k, v]) => (
-        <div key={k} className="contents">
-          <dt className="text-muted-foreground">{k}</dt>
-          <dd className="min-w-0 break-words">{v}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
 function MetadataLookup({ lookup, active }: { lookup: GetFileMetadataParams | null; active: boolean }) {
   const params = lookup ?? { driveId: "", itemId: "" };
   const q = useGetFileMetadata(params, { query: { queryKey: getGetFileMetadataQueryKey(params), enabled: active && !!lookup, retry: false } });
@@ -97,37 +57,7 @@ function MetadataLookup({ lookup, active }: { lookup: GetFileMetadataParams | nu
   );
   const r = q.data;
   if (!r) return null;
-  return (
-    <div className="space-y-3" data-testid="panel-file-metadata">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {r.stale && <Badge tone="text-amber-700 bg-amber-500/10 border-amber-600/40">Stale snapshot</Badge>}
-        {!r.mapped && <Badge tone="text-stone-600 bg-stone-500/10 border-stone-500/30">Unmapped provenance</Badge>}
-        {r.mapped && !r.stale && <Badge tone="text-emerald-700 bg-emerald-500/10 border-emerald-600/30">Current</Badge>}
-        <span className="text-[11px] text-muted-foreground">Read-only Shufflrr source values. SharePoint native fields are not changed.</span>
-      </div>
-      {r.stale && <p className="text-[11px] text-amber-800">The latest refresh attempt did not confirm these values; they may be out of date.</p>}
-      {!r.mapped && <p className="text-[11px] text-muted-foreground">This SharePoint item is not linked to a current Shufflrr source mapping; values may come from an earlier association.</p>}
-      {r.lastError && <p className="break-words text-xs text-destructive" role="alert">Last error: {r.lastError}</p>}
-      {r.fields === null ? (
-        <p className="rounded border border-dashed px-3 py-2 text-xs text-muted-foreground">No source metadata captured for this item yet.</p>
-      ) : groups.map(g => (
-        <div key={g.title}>
-          <h5 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{g.title}{g.note && <span className="ml-2 font-normal normal-case tracking-normal">{g.note}</span>}</h5>
-          <Dl rows={g.fields.map(f => [f.label, renderValue(r.fields?.[f.key], f.kind)])} />
-        </div>
-      ))}
-      <div>
-        <h5 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">App refresh</h5>
-        <Dl rows={[
-          ["Observed", r.observedAt ? fmt(r.observedAt) : renderValue(null)],
-          ["Last attempt", fmt(r.lastAttemptAt)],
-          ["Source file ID", String(r.sourceFileId)],
-          ["Drive ID", <span className="break-all font-mono">{r.driveId}</span>],
-          ["Item ID", <span className="break-all font-mono">{r.itemId}</span>],
-        ]} />
-      </div>
-    </div>
-  );
+  return <MetadataDetails record={r} />;
 }
 
 export function SyncMetadataActivity({ active }: { active: boolean }) {

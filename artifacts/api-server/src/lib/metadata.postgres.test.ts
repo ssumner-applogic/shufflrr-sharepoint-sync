@@ -51,10 +51,30 @@ test("metadata lookup and run responses work with existing captured files; concu
       assert.ok(Object.keys(body.fields).every(key => (metadataFields as readonly string[]).includes(key)));
       assert.equal(body.fields.id, snapshot.sourceFileId);
     });
+    await t.test("both browser identities retrieve the same captured metadata for ten existing files", async () => {
+      const snapshots = await db.select().from(fileMetadataTable).orderBy(fileMetadataTable.id).limit(10);
+      assert.equal(snapshots.length, 10);
+      for (const saved of snapshots) {
+        const source = await fetch(base + "/lookup?" + new URLSearchParams({ sourceFileId: String(saved.sourceFileId) }));
+        const target = await fetch(base + "/lookup?" + new URLSearchParams({ itemId: saved.itemId }));
+        assert.equal(source.status, 200);
+        assert.equal(target.status, 200);
+        const sourceRecord = await source.json() as { sourceFileId: number; fields: Record<string, unknown> };
+        const targetRecord = await target.json() as { sourceFileId: number; fields: Record<string, unknown> };
+        assert.equal(sourceRecord.sourceFileId, saved.sourceFileId);
+        assert.deepEqual(sourceRecord.fields, targetRecord.fields);
+        assert.ok(Object.keys(sourceRecord.fields).every(key => (metadataFields as readonly string[]).includes(key)));
+      }
+    });
     await t.test("invalid requests and out-of-scope lookups do not expose records", async () => {
       assert.equal((await fetch(base + "/events?runId=invalid")).status, 400);
       assert.equal((await fetch(base + "/events?runId=" + randomUUID())).status, 404);
       assert.equal((await fetch(base + "/file?" + new URLSearchParams({ driveId: "outside-scope", itemId: snapshot.itemId }))).status, 404);
+      for (const query of ["", "?sourceFileId=0", "?sourceFileId=invalid",
+        "?sourceFileId=1&itemId=ambiguous", "?itemId="]) {
+        assert.equal((await fetch(base + "/lookup" + query)).status, 400);
+      }
+      assert.equal((await fetch(base + "/lookup?itemId=not-a-mapped-file")).status, 404);
     });
     await t.test("a second metadata worker cannot create a run while the claim is held", async () => {
       const connection = await pool.connect();

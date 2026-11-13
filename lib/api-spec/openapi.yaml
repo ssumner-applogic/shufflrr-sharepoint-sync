@@ -75,6 +75,24 @@ paths:
         "401": { $ref: "#/components/responses/ShufflrrError" }
         "404": { $ref: "#/components/responses/ShufflrrError" }
         "503": { $ref: "#/components/responses/ShufflrrError" }
+  /sync/metadata/lookup:
+    get:
+      operationId: lookupFileMetadata
+      summary: Look up captured Shufflrr metadata from a browser file identity
+      description: Supply exactly one of sourceFileId or itemId. SharePoint items belong to the configured library.
+      parameters:
+        - { in: query, name: sourceFileId, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: itemId, schema: { type: string, minLength: 1, maxLength: 500 } }
+      responses:
+        "200":
+          description: Last good source snapshot and refresh state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileMetadataRecord" }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "404": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
   /sync/runs:
     get:
       operationId: getSyncRuns

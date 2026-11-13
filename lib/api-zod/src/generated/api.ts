@@ -123,6 +123,55 @@ export const GetFileMetadataResponse = zod.object({
 
 
 /**
+ * Supply exactly one of sourceFileId or itemId. SharePoint items belong to the configured library.
+ * @summary Look up captured Shufflrr metadata from a browser file identity
+ */
+
+export const lookupFileMetadataQueryItemIdMax = 500;
+
+
+
+export const LookupFileMetadataQueryParams = zod.object({
+  "sourceFileId": zod.coerce.number().int().min(1).optional(),
+  "itemId": zod.coerce.string().min(1).max(lookupFileMetadataQueryItemIdMax).optional()
+})
+
+export const LookupFileMetadataResponse = zod.object({
+  "driveId": zod.string(),
+  "itemId": zod.string(),
+  "sourceFileId": zod.number().int(),
+  "fields": zod.union([zod.object({
+  "id": zod.number().int(),
+  "portalId": zod.number().int().nullish(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "parentFolderId": zod.number().int().nullish(),
+  "folderName": zod.string().nullish(),
+  "fileType": zod.string().nullish(),
+  "extension": zod.string().nullish(),
+  "author": zod.string().nullish(),
+  "size": zod.number().int().nullish(),
+  "source": zod.string().nullish(),
+  "sourceId": zod.string().nullish(),
+  "createdDate": zod.string().nullish(),
+  "modifiedDate": zod.string().nullish(),
+  "createdById": zod.string().nullish(),
+  "createdByName": zod.string().nullish(),
+  "createdByEmail": zod.string().nullish(),
+  "modifiedById": zod.string().nullish(),
+  "modifiedByName": zod.string().nullish(),
+  "fileCreatedDate": zod.string().nullish(),
+  "fileModifiedDate": zod.string().nullish()
+}),zod.null()]),
+  "observedAt": zod.coerce.date().nullable(),
+  "lastAttemptAt": zod.coerce.date(),
+  "lastError": zod.string().nullable(),
+  "stale": zod.boolean(),
+  "mapped": zod.boolean()
+})
+
+
+/**
  * @summary Read the most recent fifty sync runs
  */
 export const getSyncRunsResponseSummaryOneArchivedFilesMin = 0;

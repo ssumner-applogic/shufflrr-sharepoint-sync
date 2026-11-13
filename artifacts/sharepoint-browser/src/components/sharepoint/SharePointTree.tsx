@@ -6,6 +6,7 @@ import { MAX_TREE_DEPTH, useExpandedSet, withAncestor } from "@/components/tree/
 import { useSharePointBranch } from "./use-sharepoint-branch";
 import { SharePointItemActions, type SelectedSharePointItem } from "./SharePointItemActions";
 import type { LibraryItem } from "@workspace/api-client-react";
+import { FileMetadataButton } from "@/components/metadata/FileMetadataButton";
 
 type BranchProps = {
   folderId?: string; level: number; ancestors: ReadonlySet<string>; active: boolean;
@@ -50,6 +51,7 @@ function SharePointBranch({ folderId, level, ancestors, active, expanded, toggle
             onToggle={toggle}
             size={it.size}
             modifiedAt={it.modifiedAt}
+            actions={!it.isFolder && <FileMetadataButton name={it.name} identity={{ itemId: it.id }} />}
             fileLink={it.isFolder ? undefined : { href: it.webUrl, external: true }}
             testId={it.isFolder ? `folder-${it.id}` : `file-${it.id}`}
             selected={selected.has(it.id)}

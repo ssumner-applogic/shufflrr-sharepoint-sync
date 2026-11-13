@@ -649,6 +649,18 @@ driveId: string;
 itemId: string;
 };
 
+export type LookupFileMetadataParams = {
+/**
+ * @minimum 1
+ */
+sourceFileId?: number;
+/**
+ * @minLength 1
+ * @maxLength 500
+ */
+itemId?: string;
+};
+
 export type GetSyncRunEventsParams = {
 runId: string;
 status?: SyncEventStatus;

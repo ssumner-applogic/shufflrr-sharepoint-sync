@@ -3,6 +3,7 @@ import { BranchError, BranchLoading, BranchNote } from "@/components/tree/Branch
 import { MAX_TREE_DEPTH, useExpandedSet, withAncestor } from "@/components/tree/tree-utils";
 import { downloadHref } from "./format";
 import { useShufflrrBranch } from "./use-shufflrr-branch";
+import { FileMetadataButton } from "@/components/metadata/FileMetadataButton";
 
 type BranchProps = {
   folderId?: number; level: number; ancestors: ReadonlySet<string>; active: boolean;
@@ -51,6 +52,7 @@ function ShufflrrBranch({ folderId, level, ancestors, active, expanded, toggle, 
             onToggle={toggle}
             size={it.size}
             modifiedAt={it.modifiedAt}
+            actions={!it.isFolder && <FileMetadataButton name={it.name} identity={{ sourceFileId: it.id }} />}
             fileLink={it.isFolder || it.isArchived ? undefined : { href: downloadHref(it.id), download: it.name }}
             testId={it.isFolder ? `shufflrr-folder-${it.id}` : `shufflrr-file-${it.id}`}
           >

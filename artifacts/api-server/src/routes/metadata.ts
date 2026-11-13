@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import {
   GetMetadataStatusResponse, GetMetadataEventsQueryParams, GetMetadataEventsResponse,
-  GetFileMetadataQueryParams, GetFileMetadataResponse, RequestMetadataRefreshResponse,
+  GetFileMetadataQueryParams, LookupFileMetadataQueryParams, GetFileMetadataResponse, RequestMetadataRefreshResponse,
 } from "@workspace/api-zod";
 import { fileMetadataTable, metadataControlTable, metadataRunsTable, metadataEventsTable } from "@workspace/db/schema";
 import { loadMetadataConfiguration, loadMetadataScope } from "../lib/metadata-scope";
@@ -65,20 +65,27 @@ export function metadataRoutes(): IRouter {
       res.json(GetMetadataEventsResponse.parse({ events: page, nextAfter: events.length > limit ? page.at(-1)!.id : null }));
     } catch { unavailable(req, res); }
   });
-  router.get("/file", async (req, res): Promise<void> => {
-    const query = GetFileMetadataQueryParams.safeParse(req.query);
-    if (!query.success) {
-      res.status(400).json({ error: "Enter a valid SharePoint drive ID and item ID.", requestId: String(req.id) }); return;
+  router.get(["/file", "/lookup"], async (req, res): Promise<void> => {
+    const query = req.path === "/file"
+      ? GetFileMetadataQueryParams.safeParse(req.query)
+      : LookupFileMetadataQueryParams.safeParse(req.query);
+    const input: { driveId?: string; itemId?: string; sourceFileId?: number } | undefined =
+      query.success ? query.data : undefined;
+    if (!input || (req.path === "/lookup" && (input.itemId !== undefined) === (input.sourceFileId !== undefined))) {
+      res.status(400).json({ error: "Choose exactly one valid Shufflrr or SharePoint file identity.", requestId: String(req.id) }); return;
     }
     try {
       const { db } = await import("@workspace/db");
       const scope = await loadMetadataScope(db);
       // The caller cannot select another drive, portal, or organization's records.
-      if (!scope || query.data.driveId !== await syncDriveId()) {
+      const driveId = await syncDriveId();
+      if (!scope || (input.driveId !== undefined && input.driveId !== driveId)) {
         res.status(404).json({ error: "Metadata not found in this sync scope.", requestId: String(req.id) }); return;
       }
       const records = await db.select().from(fileMetadataTable).where(and(
-        eq(fileMetadataTable.driveId, query.data.driveId), eq(fileMetadataTable.itemId, query.data.itemId),
+        eq(fileMetadataTable.driveId, driveId),
+        input.itemId === undefined ? undefined : eq(fileMetadataTable.itemId, input.itemId),
+        input.sourceFileId === undefined ? undefined : eq(fileMetadataTable.sourceFileId, input.sourceFileId),
         eq(fileMetadataTable.sourcePortal, new URL(shufflrrConfig().baseUrl).origin),
         eq(fileMetadataTable.destinationRootId, scope.config.destinationFolderId!),
         inArray(fileMetadataTable.sourceRootId, scope.config.sourceFolders.map(folder => String(folder.id))),
@@ -88,7 +95,7 @@ export function metadataRoutes(): IRouter {
         mapping.sourceRootId === record.sourceRootId);
       const record = records.find(isMapped) ?? records[0];
       if (!record) {
-        res.status(404).json({ error: "No metadata has been captured for this SharePoint file.", requestId: String(req.id) }); return;
+        res.status(404).json({ error: "No Shufflrr metadata has been captured for this file in the configured sync scope.", requestId: String(req.id) }); return;
       }
       const mapped = isMapped(record);
       const [latestRun] = await db.select().from(metadataRunsTable).where(eq(metadataRunsTable.scopeKey, scope.key))

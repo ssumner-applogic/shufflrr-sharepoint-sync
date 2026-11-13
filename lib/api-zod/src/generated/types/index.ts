@@ -24,6 +24,7 @@ export * from './healthStatus';
 export * from './libraryItem';
 export * from './listItemsParams';
 export * from './listShufflrrItemsParams';
+export * from './lookupFileMetadataParams';
 export * from './metadataEvent';
 export * from './metadataEventPage';
 export * from './metadataEventStatus';
