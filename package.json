@@ -15,6 +15,7 @@
     "sync:run": "pnpm --filter @workspace/api-server run sync:run",
     "sync:watch": "node --enable-source-maps artifacts/api-server/dist/sync-watch.mjs",
     "metadata:watch": "node --enable-source-maps artifacts/api-server/dist/metadata-watch.mjs",
+    "metadata:dev": "pnpm --filter @workspace/scripts exec tsx ../artifacts/api-server/src/metadata-watch.ts",
     "metadata:check": "node --enable-source-maps artifacts/api-server/dist/metadata-watch.mjs --once --first-ten",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

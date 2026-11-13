@@ -20,7 +20,22 @@ export function metadataIsDue(control: { requestedAt: Date | null; handledAt: Da
     !!(control.requestedAt && (!control.handledAt || control.requestedAt > control.handledAt)) ||
     !!(latestSync && (!control.lastSyncFinishedAt || latestSync > control.lastSyncFinishedAt));
 }
+export function metadataCooldownActive(retryAt: Date | null | undefined, now = new Date()) {
+  return !!retryAt && retryAt > now;
+}
+export function metadataCompletionUpdate(input: {
+  processed: number; total: number; sample: boolean; providerRetryAt: Date | null;
+  requestedAt: Date | null; latestSync: Date | null; intervalSeconds: number;
+}, now = new Date()) {
+  // A throttled final file is still unfinished work, even at total/total.
+  // Omit handledAt so an explicit request remains pending until a real retry.
+  if (input.providerRetryAt) return { retryAt: input.providerRetryAt, nextCrawlAt: input.providerRetryAt };
+  if (input.sample || input.processed < input.total) return null;
+  return { handledAt: input.requestedAt, lastSyncFinishedAt: input.latestSync,
+    nextCrawlAt: new Date(now.getTime() + input.intervalSeconds * 1000), retryAt: null };
+}
 export function metadataSafeError(error: unknown): string {
+  if (error instanceof ProviderBackoffError) return "The provider requested a cooldown; metadata will retry later.";
   if (error instanceof ShufflrrError) {
     if (error.code === "authentication") return "Shufflrr authentication failed. File sync is independent.";
     if (error.code === "configuration") return "Shufflrr configuration is incomplete.";

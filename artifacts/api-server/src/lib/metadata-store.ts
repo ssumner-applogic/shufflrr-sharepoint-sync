@@ -13,21 +13,25 @@ export function metadataBinding(driveId: string, sourcePortal: string, mapping: 
   return { driveId, itemId: mapping.destinationId, sourcePortal, sourceFileId: Number(mapping.sourceId),
     sourceRootId: mapping.sourceRootId, destinationRootId: mapping.destinationRootId };
 }
+export function metadataObservationPatch(outcome: { value: FileMetadata } | { error: string }, previousFingerprint: string | null, now = new Date()) {
+  if ("error" in outcome) return { lastError: outcome.error, lastAttemptAt: now, status: "failed" as const };
+  const fingerprint = metadataFingerprint(outcome.value);
+  return {
+    fields: outcome.value, fingerprint, observedAt: now, lastError: null, lastAttemptAt: now,
+    status: previousFingerprint === fingerprint ? "unchanged" as const : "refreshed" as const,
+  };
+}
 export async function saveMetadataObservation(db: MetadataDb, binding: ReturnType<typeof metadataBinding>,
   outcome: { value: FileMetadata } | { error: string }) {
   const where = and(eq(fileMetadataTable.driveId, binding.driveId), eq(fileMetadataTable.itemId, binding.itemId),
     eq(fileMetadataTable.sourcePortal, binding.sourcePortal), eq(fileMetadataTable.sourceFileId, binding.sourceFileId));
   const [previous] = await db.select().from(fileMetadataTable).where(where).limit(1);
-  const now = new Date();
-  const data = "value" in outcome
-    ? { fields: outcome.value, fingerprint: metadataFingerprint(outcome.value), observedAt: now, lastError: null }
-    : { lastError: outcome.error };
-  await db.insert(fileMetadataTable).values({ ...binding, ...data, lastAttemptAt: now })
+  const { status, ...data } = metadataObservationPatch(outcome, previous?.fingerprint ?? null);
+  await db.insert(fileMetadataTable).values({ ...binding, ...data })
     .onConflictDoUpdate({
       target: [fileMetadataTable.driveId, fileMetadataTable.itemId, fileMetadataTable.sourcePortal, fileMetadataTable.sourceFileId],
       // Failure intentionally never changes fields, fingerprint, or observedAt.
-      set: { ...binding, ...data, lastAttemptAt: now },
+      set: { ...binding, ...data },
     });
-  return "error" in outcome ? "failed" as const
-    : previous?.fingerprint === metadataFingerprint(outcome.value) ? "unchanged" as const : "refreshed" as const;
+  return status;
 }

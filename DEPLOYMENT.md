@@ -38,6 +38,44 @@ Deploy API/frontend and worker together for cooperative **Pause sync / Start syn
 
 The production API serves the compiled SharePoint viewer and `/api` routes from one stateless Node.js process, binding to `0.0.0.0` on the host-provided `PORT`. Sync uses a separate worker process and durable PostgreSQL state.
 
+## Independent metadata worker rollout
+
+Before starting this version's metadata API/worker, explicitly apply
+`pnpm db:migrate` on the intended Neon database. Additive migration
+`0009_file_metadata` creates snapshots, a coalescing control row, and separate
+metadata run/event tables. It does not change sync settings, mappings or provider
+content. Do not run migrations automatically at startup.
+
+For Railway, deploy a third **private metadata worker** from the same GitHub
+repository and image, build with `pnpm run build`, then start with
+`pnpm metadata:watch`. Give it `DATABASE_URL`, the existing Microsoft application
+variables and `SHUFFLRR_API_*` variables. It needs no public domain or health-check
+port. Optional `METADATA_CRAWL_INTERVAL_SECONDS` defaults to 300; existing provider
+pacing variables also apply. Do not combine this process with the file worker:
+metadata exceptions and restarts must not stop file transfers.
+
+For Cloud Run, use the same image in a separate Cloud Run Job with command
+`node --enable-source-maps artifacts/api-server/dist/metadata-watch.mjs --once`,
+invoked by Cloud Scheduler. Supply the same server-only credentials through
+Secret Manager and a least-privileged service identity. The transaction-scoped
+metadata lock makes overlapping invocations skip instead of creating a queue.
+An always-on metadata worker can use `pnpm metadata:watch` instead.
+
+For a safe operator check, run `pnpm metadata:check`: only the first ten existing
+mapped SharePoint files are verified using Graph reads, and the allowlisted source
+metadata is read from Shufflrr and stored in Neon. It never uploads, renames,
+deletes or modifies provider files. No representative files are created.
+
+Inspect the protected Metadata activity panel for queued/running/partial/failed
+states, progress and per-file results. Stdout uses structured `metadata_*` events
+and run request IDs, never source actor/email values. If the worker is stopped,
+refresh requests remain queued and the panel reports the missing heartbeat.
+Last-good snapshots survive errors; retry cooldowns are durable.
+Stop only the metadata service to roll it back; file sync remains independent.
+Retain the additive tables during rollback, and redeploy the matching API and
+metadata worker before resuming capture. No production deployment is performed
+by the development migration or first-ten check.
+
 ## Railway
 
 1. Connect the repository and deploy from the repository root. Build with `pnpm run build` and start the API with `pnpm start`.

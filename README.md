@@ -1,5 +1,55 @@
 # Sync activity and first-run timing
 
+## Independent Shufflrr metadata capture
+
+The **Metadata activity** panel below file-sync activity has its own refresh button,
+progress, run history and per-file log. Select an event, or enter a SharePoint drive
+ID and item ID, to look up its protected Neon snapshot. This does not edit
+SharePoint files, custom columns, native dates, or Created By/Modified By.
+
+Only these source fields are captured: `id`, `portalId`, `name`, `description`,
+`parentFolderId`, `folderName`, `fileType`, `extension`, `author`, `size`, `source`,
+`sourceId`, `createdDate`, `modifiedDate`, `createdById`, `createdByName`,
+`createdByEmail`, `modifiedById`, `modifiedByName`, `fileCreatedDate` and
+`fileModifiedDate`. Missing properties and explicit nulls remain distinguishable.
+Source activity dates, original-file dates and app observation/attempt timestamps
+are separate. Source actor IDs are not Microsoft identities.
+
+Apply additive migration `0009_file_metadata` with `pnpm db:migrate`, build, then
+start the independent process with `pnpm metadata:watch`. The Replit console
+workflow **Metadata worker** runs this command separately from the API/file worker.
+For Preview it uses `pnpm metadata:dev` with the existing TypeScript runner, so it
+does not race the API's compilation on a clean checkout. The Run button's Project
+workflow starts the existing managed API/browser workflows and this worker together.
+Production needs an equivalent private worker service; see `DEPLOYMENT.md`.
+Optional `METADATA_CRAWL_INTERVAL_SECONDS` defaults to 300 (range 30–86400).
+
+The worker observes completed file runs with copied, updated, moved or deleted
+items, and also crawls independently to detect descriptive metadata changes that
+do not change a filename, binary size or source modified timestamp. It starts
+after an active file run ends; a later file run never waits for metadata. Requests
+coalesce rather than building a queue. A separate transaction-scoped database
+lock prevents concurrent metadata crawls across Preview and hosted instances.
+Provider cooldowns survive process restarts.
+
+Only existing mapped files in the current selected scope are read. Ignored or
+excluded files are skipped, and each binding is rechecked after provider reads.
+Snapshots use the SharePoint drive/item ID plus source portal/file identity.
+Failures keep the last good values and mark them stale. Removing a mapping retains
+provenance, without granting access outside the current configured scope.
+The current organization-shared Clerk sign-in and scope guards protect both the
+lookup and refresh endpoints; no new role system was added. Source actor/email
+values stay in protected snapshots, not stdout logs.
+
+`pnpm metadata:check` reads the first ten already-mapped files, records a separately
+labeled sample run, and makes no provider writes. It does not mark a full crawl
+complete. Metadata logs retain the latest 50 runs; snapshots are not automatically
+deleted. `pnpm --filter @workspace/api-server run test:metadata` runs focused
+in-memory policy/parser tests without creating provider files.
+After the first-ten check, `pnpm --filter @workspace/api-server run test:metadata-postgres`
+checks lookup/event responses and duplicate worker claims using existing snapshots.
+It starts only a loopback route-test server and performs no provider writes.
+
 ## Recursive selection and exclusions
 
 Selected Shufflrr roots include all descendants. Expanded descendants show inherited checks; unchecked subfolders exclude their entire subtree, and affected ancestors show a mixed check state. To change scope, pause sync, uncheck unwanted subfolders, save settings, then enable sync. Rechecking an excluded folder includes its subtree again. Descendants of an excluded folder stay unchecked; reinclude their parent first.

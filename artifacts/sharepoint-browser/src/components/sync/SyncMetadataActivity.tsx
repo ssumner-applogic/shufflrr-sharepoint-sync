@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronLeft, ChevronRight, Database, Loader2, RefreshCw, Search } from "lucide-react";
 import {
@@ -64,7 +64,8 @@ const groups: { title: string; note?: string; fields: FieldDef[] }[] = [
 ];
 
 function renderValue(v: unknown, kind?: FieldDef["kind"]) {
-  if (v === null || v === undefined || v === "") return <span className="italic text-muted-foreground/70">Not provided</span>;
+  if (v === undefined) return <span className="italic text-muted-foreground/70">Not reported</span>;
+  if (v === null || v === "") return <span className="italic text-muted-foreground/70">Not provided</span>;
   if (kind === "date") return fmt(String(v));
   if (kind === "bytes" && typeof v === "number") return `${v.toLocaleString()} bytes`;
   return String(v);
@@ -138,6 +139,8 @@ export function SyncMetadataActivity({ active }: { active: boolean }) {
   const [itemId, setItemId] = useState("");
   const [lookup, setLookup] = useState<GetFileMetadataParams | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<number | null>(null);
+  const [requestedAt, setRequestedAt] = useState<string | null>(null);
+  const previousRun = useRef<{ id: string; status: MetadataRun["status"] } | null>(null);
 
   const statusQuery = useGetMetadataStatus({ query: { enabled: active, queryKey: getGetMetadataStatusQueryKey(), refetchInterval: 5000 } });
   const status = statusQuery.data;
@@ -147,9 +150,27 @@ export function SyncMetadataActivity({ active }: { active: boolean }) {
 
   useEffect(() => { if (runId === null && latest) setRunId(latest.id); }, [runId, latest?.id]);
   useEffect(() => { setCursors([]); setSelectedEvent(null); }, [runId]);
+  useEffect(() => {
+    if (requestedAt && latest && new Date(latest.startedAt) >= new Date(requestedAt)) {
+      setRunId(latest.id);
+      setRequestedAt(null);
+    }
+  }, [requestedAt, latest?.id, latest?.startedAt]);
+  useEffect(() => {
+    if (selectedRun && previousRun.current?.id === selectedRun.id &&
+      previousRun.current.status === "running" && selectedRun.status !== "running") {
+      void queryClient.invalidateQueries({ queryKey: getGetMetadataEventsQueryKey({ runId: selectedRun.id, limit: PAGE_SIZE }) });
+      if (lookup) void queryClient.invalidateQueries({ queryKey: getGetFileMetadataQueryKey(lookup) });
+    }
+    previousRun.current = selectedRun ? { id: selectedRun.id, status: selectedRun.status } : null;
+  }, [selectedRun?.id, selectedRun?.status, queryClient, lookup]);
 
   const refresh = useRequestMetadataRefresh({
-    mutation: { onSuccess: () => { void queryClient.invalidateQueries({ queryKey: getGetMetadataStatusQueryKey() }); } },
+    mutation: { onSuccess: (result) => {
+      setRequestedAt(result.requestedAt);
+      setOpen(true);
+      void queryClient.invalidateQueries({ queryKey: getGetMetadataStatusQueryKey() });
+    } },
   });
 
   const params: GetMetadataEventsParams = { runId: runId ?? "", limit: PAGE_SIZE, ...(cursors.length ? { after: cursors[cursors.length - 1] } : {}) };
@@ -200,6 +221,11 @@ export function SyncMetadataActivity({ active }: { active: boolean }) {
         </div>
       )}
       {status && !status.configured && <p className="border-t px-4 py-2 text-xs text-muted-foreground">Metadata refresh is not configured. File sync is unaffected.</p>}
+      {status?.pending && !running && <p className="border-t px-4 py-2 text-xs text-muted-foreground" role="status">
+        Refresh queued. The independent worker will start it after any active file sync or provider cooldown.
+        {(!status.workerLastSeenAt || Date.now() - new Date(status.workerLastSeenAt).getTime() > 30_000) &&
+          " The metadata worker has not checked in recently; it may need to be started."}
+      </p>}
 
       {latest && (
         <div className="space-y-1.5 border-t px-4 py-2.5 text-xs" data-testid="metadata-latest-run">

@@ -3,8 +3,8 @@ name: File metadata provenance
 description: User requirements for retaining Shufflrr metadata and retrieving it by SharePoint file identity.
 ---
 
-Capture Shufflrr metadata in Neon for reference to synchronized files, retrievable using the SharePoint file ID. Keep it current when sync actions affect the metadata and when source metadata changes without a filename change. Account for metadata that differs by file type.
+Capture only the user's allowlisted descriptive/identity fields, Shufflrr activity dates/actors, and original-file dates. Do not expand into tags, slide/media details, genealogy, history or raw provider payloads. Keep activity dates, original-file dates and app observation timestamps distinct.
 
-**Why:** The user wants to look up a SharePoint file and retrieve its related Shufflrr metadata, not just maintain a filename/content copy.
+**Why:** The user wants lookup by SharePoint file identity and explicitly narrowed the source metadata scope.
 
-**How to apply:** Treat metadata freshness separately from filename and binary-transfer state. Assess preservation of built-in SharePoint dates and Created By/Modified By without introducing custom SharePoint metadata fields. The user has not yet chosen between Shufflrr activity dates and original-file dates for native SharePoint attribution.
+**How to apply:** Keep metadata capture in a separate process and UI/log so failures cannot obstruct file sync. Detect metadata-only changes independently of filenames. Never overwrite native SharePoint dates/actors or add custom fields for this feature. Source user IDs and names are not Microsoft identity mappings. Test using the first ten existing synchronized files, not newly created representative files. The app serves a handful of people in one organization; preserve existing sign-in/scope protection without inventing a new multi-tenant role framework.

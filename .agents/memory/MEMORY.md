@@ -12,4 +12,5 @@
 - [Neon worker locks](neon-worker-locks.md) — transaction pooling requires transaction-scoped run locks; old session locks can remain stranded.
 - [Sync control timestamps](sync-control-timestamps.md) — worker status writes must not masquerade as newer Start or Sync now requests.
 - [Grouped retry behavior](sync-retry-behavior.md) — one targeted retry job per queued group; keep its results selected when later full syncs start.
-- [File metadata provenance](file-metadata-provenance.md) — retain source metadata in Neon by SharePoint file identity, including metadata-only changes and type-specific fields.
+- [File metadata provenance](file-metadata-provenance.md) — capture only the agreed source fields independently; preserve date meanings and never change SharePoint attribution.
+- [Managed worker startup](managed-worker-startup.md) — adding a console worker can replace Run-button composition; preserve managed artifact launch references.

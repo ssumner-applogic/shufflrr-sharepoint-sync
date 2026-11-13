@@ -3,14 +3,15 @@ import { and, desc, eq, notInArray, sql } from "drizzle-orm";
 import { metadataControlTable, metadataRunsTable, metadataEventsTable, syncRunsTable, syncRunEventsTable } from "@workspace/db/schema";
 import { newShufflrrClient, shufflrrConfig } from "./shufflrr";
 import { getSyncDriveItem, syncDriveId } from "./sharepoint";
-import { logger } from "./logger";
-import { isolatedMetadataRead, metadataIntervalSeconds, metadataIsDue, metadataSafeError, metadataRetryAt } from "./metadata-policy";
+import { logger as baseLogger } from "./logger";
+import { isolatedMetadataRead, metadataIntervalSeconds, metadataIsDue, metadataSafeError, metadataRetryAt, metadataCooldownActive, metadataCompletionUpdate } from "./metadata-policy";
 import { loadMetadataScope, metadataBindingStillActive } from "./metadata-scope";
 import { metadataBinding, saveMetadataObservation } from "./metadata-store";
 
 // A different transaction-scoped lock from the file-transfer lock. Crashes release
 // the claim automatically, including through Neon's transaction-pooled endpoint.
 export const METADATA_LOCK_ID = 74120938;
+const logger = baseLogger.child({ service: "metadata-worker", environment: process.env.NODE_ENV ?? "unspecified" });
 
 export async function runMetadataCycle(options: { force?: boolean; limit?: number; shouldStop?: () => boolean } = {}) {
   const interval = metadataIntervalSeconds();
@@ -22,6 +23,7 @@ export async function runMetadataCycle(options: { force?: boolean; limit?: numbe
   let started = false;
   let claimRequestAt: Date | null = null;
   let latestSync: Date | null = null;
+  let providerRetryAt: Date | null = null;
   let client: ReturnType<typeof newShufflrrClient> | undefined;
   const counts = { totalFiles: 0, processedFiles: 0, refreshedFiles: 0, unchangedFiles: 0, failedFiles: 0, skippedFiles: 0 };
   try {
@@ -36,7 +38,7 @@ export async function runMetadataCycle(options: { force?: boolean; limit?: numbe
       .where(eq(metadataRunsTable.status, "running"));
     const scope = await loadMetadataScope(db);
     if (!scope) return { skipped: true };
-    if (control!.retryAt && control!.retryAt > new Date()) return { skipped: true };
+    if (metadataCooldownActive(control!.retryAt)) return { skipped: true };
     const [latestRun] = await db.select({ finishedAt: syncRunsTable.finishedAt }).from(syncRunsTable)
       .where(sql`${syncRunsTable.finishedAt} is not null and (
         coalesce((${syncRunsTable.summary}->>'copiedFiles')::integer, 0) > 0 or
@@ -89,6 +91,7 @@ export async function runMetadataCycle(options: { force?: boolean; limit?: numbe
       await db.update(metadataRunsTable).set(counts).where(eq(metadataRunsTable.id, runId));
       await db.update(metadataControlTable).set({ workerLastSeenAt: new Date() }).where(eq(metadataControlTable.id, 1));
       if ("error" in outcome && outcome.retryAt) {
+        providerRetryAt = outcome.retryAt;
         await db.update(metadataControlTable).set({ retryAt: outcome.retryAt }).where(eq(metadataControlTable.id, 1));
         break;
       }
@@ -96,9 +99,9 @@ export async function runMetadataCycle(options: { force?: boolean; limit?: numbe
     const interrupted = counts.processedFiles < counts.totalFiles;
     const status = counts.failedFiles || counts.skippedFiles || interrupted ? "partial" as const : "success" as const;
     await db.update(metadataRunsTable).set({ ...counts, status, finishedAt: new Date() }).where(eq(metadataRunsTable.id, runId));
-    if (!options.limit && !interrupted) await db.update(metadataControlTable).set({
-      handledAt: claimRequestAt, lastSyncFinishedAt: latestSync, nextCrawlAt: new Date(Date.now() + interval * 1000), retryAt: null,
-    }).where(eq(metadataControlTable.id, 1));
+    const completionUpdate = metadataCompletionUpdate({ processed: counts.processedFiles, total: counts.totalFiles,
+      sample: options.limit !== undefined, providerRetryAt, requestedAt: claimRequestAt, latestSync, intervalSeconds: interval });
+    if (completionUpdate) await db.update(metadataControlTable).set(completionUpdate).where(eq(metadataControlTable.id, 1));
     // Prune only our own journals, never snapshots, mappings or file-sync activity.
     const keep = await db.select({ id: metadataRunsTable.id }).from(metadataRunsTable)
       .orderBy(desc(metadataRunsTable.startedAt)).limit(50);
@@ -111,9 +114,11 @@ export async function runMetadataCycle(options: { force?: boolean; limit?: numbe
     if (started) await db.update(metadataRunsTable).set({ status: "failed", finishedAt: new Date(), error: message })
       .where(eq(metadataRunsTable.id, runId)).catch(() => {});
     // Failure cooldown prevents a failing provider or database from spinning.
-    await db.update(metadataControlTable).set({ nextCrawlAt: new Date(Date.now() + interval * 1000),
-      retryAt: metadataRetryAt(error) ?? new Date(Date.now() + interval * 1000),
-      handledAt: claimRequestAt, lastSyncFinishedAt: latestSync }).where(eq(metadataControlTable.id, 1)).catch(() => {});
+    const cooldown = metadataRetryAt(error);
+    await db.update(metadataControlTable).set({ nextCrawlAt: cooldown ?? new Date(Date.now() + interval * 1000),
+      retryAt: cooldown ?? new Date(Date.now() + interval * 1000),
+      ...(cooldown ? {} : { handledAt: claimRequestAt, lastSyncFinishedAt: latestSync }),
+    }).where(eq(metadataControlTable.id, 1)).catch(() => {});
     throw new Error(message);
   } finally {
     await client?.close().catch(() => {});

@@ -1,6 +1,18 @@
-import { logger } from "./lib/logger";
+import { logger as baseLogger } from "./lib/logger";
 import { runMetadataCycle } from "./lib/metadata-worker";
 import { closeShufflrrSessions } from "./lib/shufflrr";
+import { metadataIntervalSeconds } from "./lib/metadata-policy";
+
+const logger = baseLogger.child({ service: "metadata-worker", environment: process.env.NODE_ENV ?? "unspecified" });
+const required = ["DATABASE_URL", "MICROSOFT_TENANT_ID", "MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET",
+  "SHUFFLRR_API_BASE_URL", "SHUFFLRR_API_EMAIL", "SHUFFLRR_API_PASSWORD"] as const;
+const missing = required.filter(key => !process.env[key]?.trim());
+if (missing.length) {
+  logger.error({ event: "metadata_configuration_missing", missing }, "Metadata worker configuration is incomplete.");
+  throw new Error("Required metadata worker configuration is missing.");
+}
+metadataIntervalSeconds();
+logger.info({ event: "metadata_configuration_validated", configuredKeys: required }, "Metadata worker configuration validated.");
 
 const once = process.argv.includes("--once");
 const validation = process.argv.includes("--first-ten");

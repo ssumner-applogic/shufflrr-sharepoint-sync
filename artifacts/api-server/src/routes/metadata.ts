@@ -5,7 +5,7 @@ import {
   GetFileMetadataQueryParams, GetFileMetadataResponse, RequestMetadataRefreshResponse,
 } from "@workspace/api-zod";
 import { fileMetadataTable, metadataControlTable, metadataRunsTable, metadataEventsTable } from "@workspace/db/schema";
-import { loadMetadataScope } from "../lib/metadata-scope";
+import { loadMetadataConfiguration, loadMetadataScope } from "../lib/metadata-scope";
 import { metadataIntervalSeconds } from "../lib/metadata-policy";
 import { requestMetadataRefresh } from "../lib/metadata-store";
 import { syncDriveId } from "../lib/sharepoint";
@@ -22,7 +22,7 @@ export function metadataRoutes(): IRouter {
   router.get("/status", async (req, res): Promise<void> => {
     try {
       const { db } = await import("@workspace/db");
-      const scope = await loadMetadataScope(db);
+      const scope = await loadMetadataConfiguration(db);
       const [control] = await db.select().from(metadataControlTable).where(eq(metadataControlTable.id, 1)).limit(1);
       const runs = scope ? await db.select().from(metadataRunsTable).where(eq(metadataRunsTable.scopeKey, scope.key))
         .orderBy(desc(metadataRunsTable.startedAt)).limit(50) : [];
@@ -38,7 +38,7 @@ export function metadataRoutes(): IRouter {
   router.post("/refresh", async (req, res): Promise<void> => {
     try {
       const { db } = await import("@workspace/db");
-      if (!await loadMetadataScope(db)) {
+      if (!await loadMetadataConfiguration(db)) {
         res.status(400).json({ error: "Configure sync folders before refreshing metadata.", requestId: String(req.id) }); return;
       }
       res.status(202).json(RequestMetadataRefreshResponse.parse({ requestedAt: await requestMetadataRefresh(db) }));
@@ -51,7 +51,7 @@ export function metadataRoutes(): IRouter {
     }
     try {
       const { db } = await import("@workspace/db");
-      const scope = await loadMetadataScope(db);
+      const scope = await loadMetadataConfiguration(db);
       const [run] = scope ? await db.select().from(metadataRunsTable).where(and(
         eq(metadataRunsTable.id, query.data.runId), eq(metadataRunsTable.scopeKey, scope.key),
       )).limit(1) : [];
