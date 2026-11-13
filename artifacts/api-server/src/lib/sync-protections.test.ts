@@ -317,15 +317,52 @@ test("archive policy conditionally deletes only the managed copy, logs why, and 
   assert.ok(f.rows().some(row => row.sourceId === "3"));
 });
 
-test("changed and unverifiable archived SharePoint copies remain conflicts instead of being deleted", async () => {
-  for (const patch of [{ cTag: "edited" }, { eTag: undefined }]) {
+test("archive policy deletes mapped changed copies without requiring an old content tag", async () => {
+  for (const contentTag of ["edited", undefined]) {
     const f = archiveFixture();
-    Object.assign(f.records[1], patch);
+    Object.assign(f.records[1], { cTag: contentTag });
     const log = collectLog();
     const result = await performSync(f.database, f.client, { ...engineConfig, treatArchivedAsDeleted: true }, () => {}, f.providers, log);
+    assert.ok(f.calls.includes("delete:existing-file"));
+    assert.ok(!f.calls.some(call => call.startsWith("upload:")));
+    assert.equal(result.conflicts.length, 0);
+    assert.equal(log.events.filter(event => event.status === "deleted").length, 1);
+    assert.ok(!log.events.some(event => event.path === "Source/deck.pptx" && event.status === "skipped"));
+    assert.deepEqual(result.summary.fileProgress, { totalFiles: 1, processedFiles: 1 });
+  }
+});
+
+test("a cached snapshot without eTag uses the live scoped file version to delete", async () => {
+  const f = archiveFixture();
+  Object.assign(f.records[1], { eTag: undefined });
+  const lookups: string[] = [];
+  f.providers!.getSyncPathItem = async (rootId, path) => {
+    lookups.push(`${rootId}:${path}`);
+    return { ...f.records[1], eTag: '"current-version"' };
+  };
+  f.providers!.deleteSyncItem = async (id, version) => {
+    assert.equal(id, "existing-file");
+    assert.equal(version, '"current-version"');
+    f.calls.push(`delete:${id}`);
+  };
+  const result = await performSync(f.database, f.client,
+    { ...engineConfig, treatArchivedAsDeleted: true }, () => {}, f.providers);
+  assert.deepEqual(lookups, ["root:Source/deck.pptx"]);
+  assert.equal(result.summary.deletedItems, 1);
+  assert.equal(result.summary.conflicts, 0);
+});
+
+test("archive deletion never removes a replacement file, folder, or file without a live version", async () => {
+  for (const patch of [{ id: "replacement-file" }, { isFolder: true }, { eTag: undefined }]) {
+    const f = archiveFixture();
+    f.providers!.getSyncPathItem = async () => ({ ...f.records[1], ...patch });
+    const log = collectLog();
+    await assert.rejects(performSync(f.database, f.client,
+      { ...engineConfig, treatArchivedAsDeleted: true }, () => {}, f.providers, log));
     assert.ok(!f.calls.some(call => call.startsWith("delete:") || call.startsWith("upload:")));
-    assert.ok(result.conflicts.length > 0);
-    assert.ok(log.events.some(event => event.status === "conflict" && event.message.includes("archived")));
+    assert.ok(f.rows().some(row => row.sourceId === "3"));
+    assert.ok(log.events.some(event => event.status === "failed"));
+    assert.ok(!log.events.some(event => event.status === "conflict"));
   }
 });
 

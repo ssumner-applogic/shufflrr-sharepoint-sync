@@ -432,7 +432,7 @@ export async function getSyncDeltaPage(driveId: string, cursor?: string): Promis
     return url.href;
   };
   const path = cursor ? validateLink(cursor) :
-    `${prefix}root/delta?$select=id,name,folder,size,lastModifiedDateTime,parentReference,cTag,deleted&$top=200`;
+    `${prefix}root/delta?$select=id,name,folder,size,lastModifiedDateTime,parentReference,cTag,eTag,deleted&$top=200`;
   const page = await graph<{
     value: (Partial<GraphItem> & { id: string; deleted?: unknown })[];
     "@odata.nextLink"?: string;

@@ -132,7 +132,7 @@ export const syncSharepointItemsTable = pgTable("sync_sharepoint_items", {
   itemId: text("item_id").notNull(),
   item: jsonb("item").$type<{
     id: string; name: string; isFolder: boolean; size: number;
-    modifiedAt: string; parentId?: string; cTag?: string;
+    modifiedAt: string; parentId?: string; cTag?: string; eTag?: string;
   }>().notNull(),
 }, table => [
   uniqueIndex("sync_sharepoint_snapshot_unique").on(table.driveId, table.itemId),

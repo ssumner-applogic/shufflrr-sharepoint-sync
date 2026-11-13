@@ -666,7 +666,8 @@ export function SyncAgent({ active }: { active: boolean }) {
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="start" className="max-w-sm whitespace-normal text-left leading-relaxed">
-                  On the next full sync, remove verified sync-managed SharePoint copies of archived Shufflrr files.
+                  On the next full sync, delete sync-managed SharePoint copies of archived Shufflrr files,
+                  including copies changed since their last sync. Deletions are recorded in the activity log.
                   Ignored, excluded and unrelated SharePoint content is kept. Unarchiving allows the file to sync again.
                   Pause sync to change this setting, then save settings. Update all sync workers before enabling it;
                   older workers do not understand archive exclusions.

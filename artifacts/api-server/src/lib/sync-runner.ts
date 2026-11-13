@@ -86,6 +86,12 @@ function safeError(error: unknown): string {
     if (error.code === "limit") return "A selected Shufflrr folder exceeded a sync safety limit.";
   }
   if (error instanceof AccessError) {
+    if (error.code === "ArchiveIdentityMismatch")
+      return "Archive deletion found a different SharePoint item at the mapped path. No replacement item was deleted.";
+    if (error.code === "ArchiveVersionMissing")
+      return "SharePoint did not return a current version for archive deletion. The operation will be retried.";
+    if (error.status === 412)
+      return "SharePoint changed after archive deletion was verified. Deletion will be retried on the next full sync.";
     if (error.status === 401 || error.status === 403) return "SharePoint denied a sync operation. Check write access to the selected folder.";
     if (error.status === 404) return "The SharePoint destination or a managed item could not be found.";
     if (error.status === 409 || error.code === "SyncConflict") return "A SharePoint item changed during sync and was left unchanged.";
@@ -435,21 +441,8 @@ export async function performSync(
 
   // Full source and destination listings succeeded before any destructive action.
   // Targeted retries intentionally never perform mirror deletions.
-  const blockedArchiveKeys = new Set<string>();
-  if (!retryKeys) for (const mapping of existingMappings) {
-    const key = sourceKey(mapping.sourceRootId, mapping.sourceId, mapping.sourceIsFolder);
-    const destination = destinationById.get(mapping.destinationId);
-    if (!protectedMappingIds.has(mapping.id) && archivedSourceKeys.has(key) && destination &&
-      (!mapping.destinationCTag || mapping.destinationCTag !== destination.cTag || !destination.eTag ||
-        destination.path !== mapping.relativePath)) {
-      blockedArchiveKeys.add(key);
-      await recordConflict(mapping.relativePath, false, "path-conflict",
-        "Source is archived in Shufflrr, but its SharePoint copy changed or could not be verified. It was retained for review, not deleted.");
-    }
-  }
   const staleCandidates = retryKeys ? [] : existingMappings.filter(mapping =>
     !protectedMappingIds.has(mapping.id) &&
-    !blockedArchiveKeys.has(sourceKey(mapping.sourceRootId, mapping.sourceId, mapping.sourceIsFolder)) &&
     !liveSourceKeys.has(sourceKey(mapping.sourceRootId, mapping.sourceId, mapping.sourceIsFolder)),
   );
   const destinationAncestors = (id: string) => {
@@ -466,8 +459,6 @@ export async function performSync(
   const allManagedIds = new Set(allMappingsForDestination.map(mapping => mapping.destinationId));
   const deletionProtectedIds = new Set([
     ...excludedDestinationIds, ...detachedDestinationIds,
-    ...existingMappings.filter(mapping => blockedArchiveKeys.has(sourceKey(
-      mapping.sourceRootId, mapping.sourceId, mapping.sourceIsFolder))).map(mapping => mapping.destinationId),
     ...initialDestinations.filter(item => !allManagedIds.has(item.id)).map(item => item.id),
     // A live source child may still be inside a stale destination parent until it is moved below.
     ...existingMappings.filter(mapping =>
@@ -510,7 +501,23 @@ export async function performSync(
         }
       }
       const archived = archivedSourceKeys.has(sourceKey(mapping.sourceRootId, mapping.sourceId, false));
-      await providers.deleteSyncItem(mapping.destinationId, archived ? destinationById.get(mapping.destinationId)?.eTag : undefined);
+      let expectedETag: string | undefined;
+      if (archived) {
+        // Delta snapshots may omit eTag. Verify the current scoped identity directly,
+        // not an old content tag: the archive policy also authorizes changed copies.
+        const destination = destinationById.get(mapping.destinationId)!;
+        const current = await providers.getSyncPathItem(config.destinationFolderId, destination.path);
+        if (current.id !== mapping.destinationId || current.isFolder) {
+          throw new AccessError("ArchiveIdentityMismatch",
+            "Archive deletion could not verify the mapped SharePoint file identity. No replacement item was deleted.", 409);
+        }
+        if (!current.eTag) {
+          throw new AccessError("ArchiveVersionMissing",
+            "SharePoint did not return a current version for archive deletion. The operation will be retried.", 502);
+        }
+        expectedETag = current.eTag;
+      }
+      await providers.deleteSyncItem(mapping.destinationId, expectedETag);
       summary.deletedItems += 1;
       for (const id of removedIds) {
         deletedDestinationIds.add(id);
@@ -563,7 +570,6 @@ export async function performSync(
       continue;
     }
     if (!record.entry.isFolder && record.entry.isArchived && config.treatArchivedAsDeleted) {
-      if (blockedArchiveKeys.has(sourceKey(rootId, itemId, false))) continue;
       await db.update(syncFileFailuresTable).set({ resolvedAt: new Date(), retryRequestedAt: null })
         .where(and(eq(syncFileFailuresTable.sourceRootId, record.root.id),
           eq(syncFileFailuresTable.sourceId, record.entry.id),
@@ -571,10 +577,16 @@ export async function performSync(
       if (!retryKeys) await db.delete(syncFileRulesTable).where(and(
         eq(syncFileRulesTable.sourceRootId, record.root.id), eq(syncFileRulesTable.sourceId, record.entry.id),
         eq(syncFileRulesTable.destinationRootId, config.destinationFolderId), eq(syncFileRulesTable.action, "overwrite")));
+      if (mapping && deletedDestinationIds.has(mapping.destinationId)) {
+        // The deletion phase already logged this file; do not add a misleading
+        // "skipped" event for the same successfully deleted archived copy.
+        fileProgress.record(key);
+        continue;
+      }
       await recordEvent(record.path, false, "skipped",
         retryKeys
           ? "Archived in Shufflrr. Excluded from uploads; managed-copy removal is checked on the next full sync, not a targeted retry."
-          : "Archived in Shufflrr. Excluded from uploads by Treat archived files as deleted; only verified managed SharePoint copies can be removed.", true);
+          : "Archived in Shufflrr. Excluded from uploads by Treat archived files as deleted; no synchronized SharePoint copy remains to delete.", true);
       continue;
     }
     if (mapping) mappedDestinationIds.add(mapping.destinationId);
