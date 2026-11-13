@@ -2,12 +2,24 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { metadataFields, parseFileMetadata } from "@workspace/shufflrr";
 import { ProviderBackoffError } from "@workspace/shufflrr/http-policy";
-import { metadataCooldownActive, metadataFingerprint, metadataIsDue, isolatedMetadataRead, metadataCompletionUpdate } from "./metadata-policy";
+import { metadataCooldownActive, metadataFingerprint, metadataIsDue, isolatedMetadataRead, metadataCompletionUpdate, metadataIntervalSeconds } from "./metadata-policy";
+import { SetMetadataIntervalBody } from "@workspace/api-zod";
 import { metadataObservationPatch } from "./metadata-store";
 import { metadataScopeKey } from "./metadata-scope";
 
 // In-memory values only: no provider files or persistent test mappings are created.
 const minimum = { id: 1, name: "existing.pptx" };
+
+test("metadata intervals accept exactly the four UI options and reject invalid input", () => {
+  for (const intervalSeconds of [300, 600, 900, 3600]) {
+    assert.equal(metadataIntervalSeconds(intervalSeconds), intervalSeconds);
+    assert.ok(SetMetadataIntervalBody.safeParse({ intervalSeconds }).success);
+  }
+  for (const intervalSeconds of [0, -1, 60, 301, 86400, 1.5, "300", null, undefined]) {
+    assert.equal(SetMetadataIntervalBody.safeParse({ intervalSeconds }).success, false);
+    if (typeof intervalSeconds === "number") assert.throws(() => metadataIntervalSeconds(intervalSeconds));
+  }
+});
 
 test("captures exactly the requested 21 fields and drops everything else", () => {
   assert.equal(metadataFields.length, 21);

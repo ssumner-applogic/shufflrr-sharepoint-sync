@@ -6,7 +6,7 @@ import { getSyncDriveItem, syncDriveId } from "./sharepoint";
 import { logger as baseLogger } from "./logger";
 import { isolatedMetadataRead, metadataIntervalSeconds, metadataIsDue, metadataSafeError, metadataRetryAt, metadataCooldownActive, metadataCompletionUpdate } from "./metadata-policy";
 import { loadMetadataScope, metadataBindingStillActive } from "./metadata-scope";
-import { metadataBinding, saveMetadataObservation } from "./metadata-store";
+import { metadataBinding, saveMetadataObservation, nextMetadataCrawlAt } from "./metadata-store";
 
 // A different transaction-scoped lock from the file-transfer lock. Crashes release
 // the claim automatically, including through Neon's transaction-pooled endpoint.
@@ -14,7 +14,7 @@ export const METADATA_LOCK_ID = 74120938;
 const logger = baseLogger.child({ service: "metadata-worker", environment: process.env.NODE_ENV ?? "unspecified" });
 
 export async function runMetadataCycle(options: { force?: boolean; limit?: number; shouldStop?: () => boolean } = {}) {
-  const interval = metadataIntervalSeconds();
+  metadataIntervalSeconds();
   if (options.limit !== undefined && (!Number.isSafeInteger(options.limit) || options.limit < 1 || options.limit > 10))
     throw new Error("Metadata validation limit must be between 1 and 10.");
   const { db, pool } = await import("@workspace/db");
@@ -32,6 +32,7 @@ export async function runMetadataCycle(options: { force?: boolean; limit?: numbe
     if (!claim.rows[0]?.locked) return { skipped: true };
     const [control] = await db.insert(metadataControlTable).values({ id: 1, workerLastSeenAt: new Date() })
       .onConflictDoUpdate({ target: metadataControlTable.id, set: { workerLastSeenAt: new Date() } }).returning();
+    const interval = metadataIntervalSeconds(control!.intervalSeconds);
     // We own the lock: a running journal left behind cannot still have a live owner.
     const interruptionMessage = "Metadata worker stopped before completion. The next refresh will retry; file sync was not affected.";
     await db.update(metadataRunsTable).set({ status: "failed", finishedAt: new Date(), error: interruptionMessage })
@@ -101,7 +102,10 @@ export async function runMetadataCycle(options: { force?: boolean; limit?: numbe
     await db.update(metadataRunsTable).set({ ...counts, status, finishedAt: new Date() }).where(eq(metadataRunsTable.id, runId));
     const completionUpdate = metadataCompletionUpdate({ processed: counts.processedFiles, total: counts.totalFiles,
       sample: options.limit !== undefined, providerRetryAt, requestedAt: claimRequestAt, latestSync, intervalSeconds: interval });
-    if (completionUpdate) await db.update(metadataControlTable).set(completionUpdate).where(eq(metadataControlTable.id, 1));
+    if (completionUpdate) await db.update(metadataControlTable).set({
+      ...completionUpdate,
+      nextCrawlAt: providerRetryAt ?? nextMetadataCrawlAt(),
+    }).where(eq(metadataControlTable.id, 1));
     // Prune only our own journals, never snapshots, mappings or file-sync activity.
     const keep = await db.select({ id: metadataRunsTable.id }).from(metadataRunsTable)
       .orderBy(desc(metadataRunsTable.startedAt)).limit(50);
@@ -115,8 +119,8 @@ export async function runMetadataCycle(options: { force?: boolean; limit?: numbe
       .where(eq(metadataRunsTable.id, runId)).catch(() => {});
     // Failure cooldown prevents a failing provider or database from spinning.
     const cooldown = metadataRetryAt(error);
-    await db.update(metadataControlTable).set({ nextCrawlAt: cooldown ?? new Date(Date.now() + interval * 1000),
-      retryAt: cooldown ?? new Date(Date.now() + interval * 1000),
+    await db.update(metadataControlTable).set({ nextCrawlAt: cooldown ?? nextMetadataCrawlAt(),
+      retryAt: cooldown ?? nextMetadataCrawlAt(),
       ...(cooldown ? {} : { handledAt: claimRequestAt, lastSyncFinishedAt: latestSync }),
     }).where(eq(metadataControlTable.id, 1)).catch(() => {});
     throw new Error(message);

@@ -1,8 +1,22 @@
 import { and, eq, sql } from "drizzle-orm";
 import { fileMetadataTable, metadataControlTable, type SyncItem } from "@workspace/db/schema";
 import type { FileMetadata } from "@workspace/shufflrr";
-import { metadataFingerprint } from "./metadata-policy";
+import { metadataFingerprint, metadataIntervalSeconds } from "./metadata-policy";
 import type { MetadataDb } from "./metadata-scope";
+
+// Read the saved interval in the UPDATE itself so a change during a crawl
+// cannot be overwritten by the worker's older in-memory setting.
+export function nextMetadataCrawlAt() {
+  return sql<Date>`clock_timestamp() + coalesce(${metadataControlTable.intervalSeconds}, ${metadataIntervalSeconds()}) * interval '1 second'`;
+}
+
+export async function saveMetadataInterval(db: Pick<MetadataDb, "insert">, intervalSeconds: number) {
+  const interval = metadataIntervalSeconds(intervalSeconds);
+  const nextCrawlAt = sql<Date>`clock_timestamp() + ${interval} * interval '1 second'`;
+  const [control] = await db.insert(metadataControlTable).values({ id: 1, intervalSeconds: interval, nextCrawlAt })
+    .onConflictDoUpdate({ target: metadataControlTable.id, set: { intervalSeconds: interval, nextCrawlAt } }).returning();
+  return { intervalSeconds: interval, nextCrawlAt: control!.nextCrawlAt };
+}
 
 export async function requestMetadataRefresh(db: MetadataDb) {
   const [control] = await db.insert(metadataControlTable).values({ id: 1, requestedAt: sql`clock_timestamp()` })

@@ -11,6 +11,24 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /sync/metadata/interval:
+    post:
+      operationId: setMetadataInterval
+      summary: Save the shared metadata crawl interval independently of file polling
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MetadataIntervalInput" }
+      responses:
+        "200":
+          description: Saved metadata schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetadataSchedule" }
+        "400": { $ref: "#/components/responses/ShufflrrError" }
+        "401": { $ref: "#/components/responses/ShufflrrError" }
+        "503": { $ref: "#/components/responses/ShufflrrError" }
   /sync/metadata/status:
     get:
       operationId: getMetadataStatus
@@ -661,6 +679,18 @@ components:
         skippedFiles: { type: integer }
         sampleLimit: { type: ["integer", "null"] }
         error: { type: ["string", "null"] }
+    MetadataIntervalInput:
+      type: object
+      additionalProperties: false
+      required: [intervalSeconds]
+      properties:
+        intervalSeconds: { type: integer, enum: [300, 600, 900, 3600] }
+    MetadataSchedule:
+      type: object
+      required: [intervalSeconds, nextCrawlAt]
+      properties:
+        intervalSeconds: { type: integer }
+        nextCrawlAt: { type: string, format: date-time }
     MetadataStatus:
       type: object
       required: [configured, pending, workerLastSeenAt, nextCrawlAt, intervalSeconds, runs]

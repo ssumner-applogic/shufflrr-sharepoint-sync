@@ -24,6 +24,7 @@ export const metadataControlTable = pgTable("metadata_control", {
   id: integer("id").primaryKey().default(1),
   requestedAt: timestamp("requested_at", { withTimezone: true }),
   handledAt: timestamp("handled_at", { withTimezone: true }),
+  intervalSeconds: integer("interval_seconds"),
   lastSyncFinishedAt: timestamp("last_sync_finished_at", { withTimezone: true }),
   retryAt: timestamp("retry_at", { withTimezone: true }),
   nextCrawlAt: timestamp("next_crawl_at", { withTimezone: true }).notNull().defaultNow(),

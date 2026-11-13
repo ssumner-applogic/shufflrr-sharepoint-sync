@@ -36,6 +36,7 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SyncActivityLog } from "./SyncActivityLog";
 import { SyncMetadataActivity } from "./SyncMetadataActivity";
+import { MetadataSyncInterval } from "./MetadataSyncInterval";
 import { SyncDashboard } from "./SyncDashboard";
 import { SyncDisconnectControl } from "./SyncDisconnectControl";
 import { SyncIgnoredFiles } from "./SyncIgnoredFiles";
@@ -497,10 +498,13 @@ export function SyncAgent({ active }: { active: boolean }) {
       <div className="sticky top-16 z-[1] flex flex-wrap items-center justify-between gap-3 border-b bg-background py-3">
         <h2 className="text-lg font-semibold">Sync Agent</h2>
         <div className="flex flex-wrap items-center gap-2">
+          <fieldset className="min-w-0 rounded-md border px-2 pb-2">
+            <legend className="px-1 text-xs font-medium text-muted-foreground">File Sync</legend>
+            <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            Shufflrr polling
+            Polling
             <select
-              aria-label="Shufflrr polling interval"
+              aria-label="File sync polling interval"
               title="Saved automatically. Runs never overlap; provider cooldowns take priority."
               value={config?.pollIntervalSeconds ?? 60}
               disabled={!config || intervalMutation.isPending || saveMutation.isPending || enabledMutation.isPending || disconnectMutation.isPending}
@@ -554,6 +558,9 @@ export function SyncAgent({ active }: { active: boolean }) {
             {enabledMutation.isPending ? "Saving…" : config.enabled ? "Pause sync" : "Start sync"}
           </button>
         )}
+            </div>
+          </fieldset>
+          <MetadataSyncInterval active={active} />
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}

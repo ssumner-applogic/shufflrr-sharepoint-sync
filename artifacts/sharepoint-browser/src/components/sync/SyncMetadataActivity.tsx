@@ -166,7 +166,7 @@ export function SyncMetadataActivity({ active }: { active: boolean }) {
             <span className={latest.failedFiles ? "text-destructive" : ""}>{latest.failedFiles} failed</span>
             <span>{latest.skippedFiles} skipped</span>
             {latest.sampleLimit != null && <span>Sample limit {latest.sampleLimit}</span>}
-            <span className="ml-auto">Every {Math.round((status?.intervalSeconds ?? 0) / 60)} min{status?.nextCrawlAt ? ` · next ${fmt(status.nextCrawlAt)}` : ""}</span>
+            <span className="ml-auto">Every {Math.round((status?.intervalSeconds ?? 0) / 60)} min, and after file-sync changes{status?.nextCrawlAt ? ` · next scheduled ${fmt(status.nextCrawlAt)}` : ""}</span>
           </div>
           {running && (
             <div className="h-1.5 overflow-hidden rounded-full bg-sky-100" role="progressbar" aria-label="Metadata refresh progress"

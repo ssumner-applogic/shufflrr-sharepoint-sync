@@ -9,6 +9,19 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Save the shared metadata crawl interval independently of file polling
+ */
+export const SetMetadataIntervalBody = zod.object({
+  "intervalSeconds": zod.union([zod.literal(300),zod.literal(600),zod.literal(900),zod.literal(3600)])
+})
+
+export const SetMetadataIntervalResponse = zod.object({
+  "intervalSeconds": zod.number().int(),
+  "nextCrawlAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Independent metadata worker status and recent runs
  */
 export const GetMetadataStatusResponse = zod.object({

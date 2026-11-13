@@ -90,6 +90,25 @@ export interface MetadataRun {
   error: string | null;
 }
 
+export type MetadataIntervalInputIntervalSeconds = typeof MetadataIntervalInputIntervalSeconds[keyof typeof MetadataIntervalInputIntervalSeconds];
+
+
+export const MetadataIntervalInputIntervalSeconds = {
+  NUMBER_300: 300,
+  NUMBER_600: 600,
+  NUMBER_900: 900,
+  NUMBER_3600: 3600,
+} as const;
+
+export interface MetadataIntervalInput {
+  intervalSeconds: MetadataIntervalInputIntervalSeconds;
+}
+
+export interface MetadataSchedule {
+  intervalSeconds: number;
+  nextCrawlAt: string;
+}
+
 export interface MetadataStatus {
   configured: boolean;
   pending: boolean;

@@ -76,6 +76,14 @@ Retain the additive tables during rollback, and redeploy the matching API and
 metadata worker before resuming capture. No production deployment is performed
 by the development migration or first-ten check.
 
+For configurable metadata intervals, apply `0010_metadata_interval` with
+`pnpm db:migrate` as an explicit release step before updating the API and every
+metadata worker. The UI's **Metadata Sync** setting is shared through Neon;
+`METADATA_CRAWL_INTERVAL_SECONDS` remains the default only when no saved override
+exists. No new environment variables are required. A saved interval reschedules
+the periodic crawl without interrupting an active crawl, bypassing a provider
+cooldown, or changing file polling. Retain the nullable column during rollback.
+
 ## Railway
 
 1. Connect the repository and deploy from the repository root. Build with `pnpm run build` and start the API with `pnpm start`.

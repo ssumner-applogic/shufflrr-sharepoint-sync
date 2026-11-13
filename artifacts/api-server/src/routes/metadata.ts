@@ -3,11 +3,12 @@ import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import {
   GetMetadataStatusResponse, GetMetadataEventsQueryParams, GetMetadataEventsResponse,
   GetFileMetadataQueryParams, LookupFileMetadataQueryParams, GetFileMetadataResponse, RequestMetadataRefreshResponse,
+  SetMetadataIntervalBody, SetMetadataIntervalResponse,
 } from "@workspace/api-zod";
 import { fileMetadataTable, metadataControlTable, metadataRunsTable, metadataEventsTable } from "@workspace/db/schema";
 import { loadMetadataConfiguration, loadMetadataScope } from "../lib/metadata-scope";
 import { metadataIntervalSeconds } from "../lib/metadata-policy";
-import { requestMetadataRefresh } from "../lib/metadata-store";
+import { requestMetadataRefresh, saveMetadataInterval } from "../lib/metadata-store";
 import { syncDriveId } from "../lib/sharepoint";
 import { shufflrrConfig } from "../lib/shufflrr";
 
@@ -19,6 +20,18 @@ function unavailable(req: Request, res: Response) {
 /** Mounted beneath the existing /sync authentication and same-origin guards. */
 export function metadataRoutes(): IRouter {
   const router = Router();
+  router.post("/interval", async (req, res): Promise<void> => {
+    const input = SetMetadataIntervalBody.safeParse(req.body);
+    if (!input.success) {
+      res.status(400).json({ error: "Choose a metadata interval of 5, 10, 15 or 60 minutes.", requestId: String(req.id) }); return;
+    }
+    try {
+      const { db } = await import("@workspace/db");
+      const schedule = await saveMetadataInterval(db, input.data.intervalSeconds);
+      req.log.info({ event: "metadata_interval_saved", intervalSeconds: schedule.intervalSeconds }, "Metadata schedule saved.");
+      res.json(SetMetadataIntervalResponse.parse(schedule));
+    } catch { unavailable(req, res); }
+  });
   router.get("/status", async (req, res): Promise<void> => {
     try {
       const { db } = await import("@workspace/db");
@@ -31,7 +44,7 @@ export function metadataRoutes(): IRouter {
       res.json(GetMetadataStatusResponse.parse({
         configured: !!scope, pending: !!scope && pending, workerLastSeenAt: control?.workerLastSeenAt ?? null,
         nextCrawlAt: scope ? control?.retryAt && control.retryAt > new Date() ? control.retryAt : control?.nextCrawlAt ?? null : null,
-        intervalSeconds: metadataIntervalSeconds(), runs,
+        intervalSeconds: metadataIntervalSeconds(control?.intervalSeconds), runs,
       }));
     } catch { unavailable(req, res); }
   });
@@ -102,9 +115,10 @@ export function metadataRoutes(): IRouter {
         .orderBy(desc(metadataRunsTable.startedAt)).limit(1);
       const failedAfterObservation = latestRun?.status === "failed" &&
         (!record.observedAt || latestRun.startedAt > record.observedAt);
+      const [control] = await db.select().from(metadataControlTable).where(eq(metadataControlTable.id, 1)).limit(1);
       res.json(GetFileMetadataResponse.parse({
         ...record, mapped, stale: !mapped || !!record.lastError || !!failedAfterObservation || !record.observedAt ||
-          Date.now() - record.observedAt.getTime() > metadataIntervalSeconds() * 2000,
+          Date.now() - record.observedAt.getTime() > metadataIntervalSeconds(control?.intervalSeconds) * 2000,
       }));
     } catch { unavailable(req, res); }
   });

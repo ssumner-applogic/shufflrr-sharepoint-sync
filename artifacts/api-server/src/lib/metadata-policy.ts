@@ -3,7 +3,11 @@ import { metadataFields, type FileMetadata, ShufflrrError } from "@workspace/shu
 import { AccessError } from "./sharepoint";
 import { ProviderBackoffError } from "@workspace/shufflrr/http-policy";
 
-export function metadataIntervalSeconds() {
+export function metadataIntervalSeconds(saved?: number | null) {
+  if (saved != null) {
+    if (![300, 600, 900, 3600].includes(saved)) throw new Error("Invalid saved metadata interval.");
+    return saved;
+  }
   const value = process.env.METADATA_CRAWL_INTERVAL_SECONDS ?? "300";
   if (!/^\d+$/.test(value) || Number(value) < 30 || Number(value) > 86400)
     throw new Error("METADATA_CRAWL_INTERVAL_SECONDS must be between 30 and 86400.");

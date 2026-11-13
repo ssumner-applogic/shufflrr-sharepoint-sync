@@ -25,6 +25,15 @@ does not race the API's compilation on a clean checkout. The Run button's Projec
 workflow starts the existing managed API/browser workflows and this worker together.
 Production needs an equivalent private worker service; see `DEPLOYMENT.md`.
 Optional `METADATA_CRAWL_INTERVAL_SECONDS` defaults to 300 (range 30–86400).
+The **Metadata Sync** selector beside the Sync Agent gear saves a shared Neon
+override of 5, 10, 15 or 60 minutes. Apply additive migration
+`0010_metadata_interval` with `pnpm db:migrate` before releasing the matching API
+and metadata worker. The environment variable is only the default until a UI
+interval is saved. Changes reschedule the next periodic crawl from the save time;
+an active crawl is not interrupted and uses the latest saved interval on completion.
+Manual requests, post-file-change triggers and provider cooldowns remain independent
+of this interval. The **File Sync** frame contains only the file polling and actions;
+pausing file sync does not pause the independent metadata worker.
 
 The worker observes completed file runs with copied, updated, moved or deleted
 items, and also crawls independently to detect descriptive metadata changes that
