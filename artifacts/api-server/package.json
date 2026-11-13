@@ -9,6 +9,8 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "sync:run": "node --enable-source-maps ./dist/sync.mjs",
     "sync:watch": "node --enable-source-maps ./dist/sync-watch.mjs",
+    "sync:files": "node --enable-source-maps ./dist/file-sync-watch.mjs",
+    "test:supervisor": "pnpm --filter @workspace/scripts exec tsx --test ../artifacts/api-server/src/lib/worker-supervisor.test.ts",
     "metadata:watch": "node --enable-source-maps ./dist/metadata-watch.mjs",
     "metadata:check": "node --enable-source-maps ./dist/metadata-watch.mjs --once --first-ten",
     "test:metadata": "pnpm --filter @workspace/scripts exec tsx --test ../artifacts/api-server/src/lib/metadata.test.ts",

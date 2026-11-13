@@ -46,20 +46,42 @@ Before starting this version's metadata API/worker, explicitly apply
 metadata run/event tables. It does not change sync settings, mappings or provider
 content. Do not run migrations automatically at startup.
 
-For Railway, deploy a third **private metadata worker** from the same GitHub
-repository and image, build with `pnpm run build`, then start with
-`pnpm metadata:watch`. Give it `DATABASE_URL`, the existing Microsoft application
-variables and `SHUFFLRR_API_*` variables. It needs no public domain or health-check
-port. Optional `METADATA_CRAWL_INTERVAL_SECONDS` defaults to 300; existing provider
-pacing variables also apply. Do not combine this process with the file worker:
-metadata exceptions and restarts must not stop file transfers.
+For Railway, keep two services: the website/API and the existing private
+`sync-worker`. Build the worker image with `pnpm run build` and keep its existing
+start command:
+`node --enable-source-maps artifacts/api-server/dist/sync-watch.mjs`.
+That entry point now supervises separate `file-sync-watch.mjs` and
+`metadata-watch.mjs` Node processes. No third Railway service or new dependency
+is needed. Provide the existing `DATABASE_URL`, Microsoft application variables
+and `SHUFFLRR_API_*` variables to `sync-worker`; both children inherit them without
+logging their values. The service needs no public domain or HTTP health-check
+port. Optional `METADATA_CRAWL_INTERVAL_SECONDS` remains the initial default;
+the saved UI override and provider pacing/cooldowns still apply.
+
+Child stdout/stderr flows directly to Railway's captured service logs.
+Supervisor records use `service=worker-supervisor`, worker names, exit status,
+restart delay and consistent `worker_*` events; file and metadata activity logs
+remain separate in Neon and the UI. Crashing either child restarts only that
+child with capped exponential backoff (1–60 seconds, reset after 60 seconds of
+runtime). Clean but unexpected child exits also restart. Neither child is
+silently replaced by another provider or run mode.
+
+Set the worker service's Railway **draining/termination grace to at least
+45 seconds**. On SIGTERM/SIGINT the supervisor cancels retries, signals both
+children, and waits up to 35 seconds for cleanup. It kills only remaining
+children after that deadline and exits nonzero. During deployment the existing
+database locks still prevent duplicate runs if old/new service instances overlap.
+A container restart or resource exhaustion can still affect both workers.
 
 For Cloud Run, use the same image in a separate Cloud Run Job with command
 `node --enable-source-maps artifacts/api-server/dist/metadata-watch.mjs --once`,
 invoked by Cloud Scheduler. Supply the same server-only credentials through
 Secret Manager and a least-privileged service identity. The transaction-scoped
 metadata lock makes overlapping invocations skip instead of creating a queue.
-An always-on metadata worker can use `pnpm metadata:watch` instead.
+For always-on compute the same supervisor entry point is platform-independent.
+For Cloud Run Jobs, retain the separate run-to-completion file and metadata
+commands rather than the continuous supervisor; use Cloud Scheduler to invoke
+them. Neither mode depends on Railway APIs or a local persistent filesystem.
 
 For a safe operator check, run `pnpm metadata:check`: only the first ten existing
 mapped SharePoint files are verified using Graph reads, and the allowlisted source
@@ -71,7 +93,12 @@ states, progress and per-file results. Stdout uses structured `metadata_*` event
 and run request IDs, never source actor/email values. If the worker is stopped,
 refresh requests remain queued and the panel reports the missing heartbeat.
 Last-good snapshots survive errors; retry cooldowns are durable.
-Stop only the metadata service to roll it back; file sync remains independent.
+For a metadata-only rollback, release the same worker service with start command
+`node --enable-source-maps artifacts/api-server/dist/file-sync-watch.mjs`
+to run file sync alone. Killing the metadata child manually is not a disable
+mechanism: the supervisor will restart it. Revert to `sync-watch.mjs` to resume
+both. The standalone `metadata-watch.mjs` entry point remains available for
+operator checks or separate hosting when explicitly needed.
 Retain the additive tables during rollback, and redeploy the matching API and
 metadata worker before resuming capture. No production deployment is performed
 by the development migration or first-ten check.
@@ -101,7 +128,7 @@ cooldown, or changing file polling. Retain the nullable column during rollback.
    - Optionally `SESSION_SECRET` for signing pagination cursors independently of the Microsoft client secret.
 4. Apply the production database migration once, before enabling sync: run `pnpm db:migrate` with the production `DATABASE_URL` available in a secure release environment. Do not run schema changes at application startup.
 5. Set the API service health check path to `/healthz` and deploy it.
-6. Create a second, private worker service from the same repository. Build with `pnpm run build`, set the start command to `node --enable-source-maps artifacts/api-server/dist/sync-watch.mjs`, and provide `DATABASE_URL`, the three Microsoft variables, and the three `SHUFFLRR_API_*` variables. No public domain, `PORT`, or Clerk keys are needed by this worker.
+6. Create a second, private worker service from the same repository. Build with `pnpm run build`, set the start command to `node --enable-source-maps artifacts/api-server/dist/sync-watch.mjs`, and provide `DATABASE_URL`, the three Microsoft variables, and the three `SHUFFLRR_API_*` variables. This supervisor runs separate file and metadata processes. Set termination/draining grace to at least 45 seconds. No public domain, `PORT`, or Clerk keys are needed by this worker.
 
 Before enabling sync, the Microsoft application must have `Sites.Selected` access with the `write` role granted to the target SharePoint site. The prior access test showed that folder creation was denied, so verify write access succeeds before starting sync; the app cannot grant itself SharePoint permissions. That site grant is required for folder/file create, update, move, and delete operations.
 

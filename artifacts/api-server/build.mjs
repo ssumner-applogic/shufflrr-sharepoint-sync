@@ -19,6 +19,7 @@ async function buildAll() {
       path.resolve(artifactDir, "src/index.ts"),
       path.resolve(artifactDir, "src/sync.ts"),
       path.resolve(artifactDir, "src/sync-watch.ts"),
+      path.resolve(artifactDir, "src/file-sync-watch.ts"),
       path.resolve(artifactDir, "src/metadata-watch.ts"),
     ],
     platform: "node",

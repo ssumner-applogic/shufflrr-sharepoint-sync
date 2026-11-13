@@ -23,7 +23,8 @@ workflow **Metadata worker** runs this command separately from the API/file work
 For Preview it uses `pnpm metadata:dev` with the existing TypeScript runner, so it
 does not race the API's compilation on a clean checkout. The Run button's Project
 workflow starts the existing managed API/browser workflows and this worker together.
-Production needs an equivalent private worker service; see `DEPLOYMENT.md`.
+Production uses the existing private `sync-worker` service for both worker
+processes; see `DEPLOYMENT.md`.
 Optional `METADATA_CRAWL_INTERVAL_SECONDS` defaults to 300 (range 30–86400).
 The **Metadata Sync** selector beside the Sync Agent gear saves a shared Neon
 override of 5, 10, 15 or 60 minutes. Apply additive migration
@@ -42,6 +43,32 @@ after an active file run ends; a later file run never waits for metadata. Reques
 coalesce rather than building a queue. A separate transaction-scoped database
 lock prevents concurrent metadata crawls across Preview and hosted instances.
 Provider cooldowns survive process restarts.
+
+### Supervised production workers
+
+After `pnpm run build`, `pnpm sync:watch` starts a small supervisor with two
+separate Node processes: file sync and metadata capture. Railway's existing
+`node --enable-source-maps artifacts/api-server/dist/sync-watch.mjs` start command
+is unchanged; no third Railway service is required. The website/API remains
+separate. Each child inherits the existing worker configuration, owns its own
+connections, and keeps its current database lock, schedule and activity log.
+
+An unexpected child exit (including exit code zero) restarts only that child.
+Repeated exits back off from 1 second to a maximum of 60 seconds; a child that
+runs for at least 60 seconds resets its backoff. Startup validates that both
+compiled worker entry points exist rather than silently omitting a worker.
+`SIGTERM`/`SIGINT` stops both children, cancels restarts and waits for cleanup.
+After 35 seconds, only remaining children are force-killed and the supervisor
+exits unsuccessfully. Set Railway's termination/draining grace to at least
+45 seconds so it can perform this shutdown. Shared service CPU/memory and
+deployments can still affect both workers.
+
+Standalone commands remain available: `pnpm sync:files` for file sync only and
+`pnpm metadata:watch` for metadata only. Do not run these alongside the supervisor
+in the same service. Replit Preview's existing API scheduler and Metadata worker
+workflow are unchanged; they do not start an additional supervisor.
+Run `pnpm test:supervisor` for real local child-process lifecycle tests that never
+call Shufflrr, SharePoint or Neon.
 
 Only existing mapped files in the current selected scope are read. Ignored or
 excluded files are skipped, and each binding is rechecked after provider reads.

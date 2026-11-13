@@ -14,3 +14,4 @@
 - [Grouped retry behavior](sync-retry-behavior.md) — one targeted retry job per queued group; keep its results selected when later full syncs start.
 - [File metadata provenance](file-metadata-provenance.md) — capture only the agreed source fields independently; preserve date meanings and never change SharePoint attribution.
 - [Managed worker startup](managed-worker-startup.md) — adding a console worker can replace Run-button composition; preserve managed artifact launch references.
+- [Worker service layout](worker-service-layout.md) — keep two production services; supervise file and metadata in separate processes inside sync-worker.
